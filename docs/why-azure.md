@@ -49,8 +49,8 @@ Azure AI Foundry's model catalog varies by region. GPT-4o deployments are availa
 
 ## Who should use this
 
-Nothing here has been deployed end-to-end against live Azure infrastructure. Terraform validates and plans clean; the tests pass; the compose stack starts. A smoke-tested live environment does not exist yet.
+This is not a whiteboard design. The architecture runs in production today — AzureAgentForge is the sanitized, open-source form of a live platform. What is published here is independently verifiable: Terraform validates and plans clean against both profiles, the tests pass, and the compose stack starts. You supply your own Azure subscription and deploy into your own tenant; the dollar figures in `docs/cost.md` are modeled estimates until you have run it against your own bill.
 
 What the repo is is a complete infrastructure-as-code design for an agentic platform: VNet-private memory, a model router you can swap backends through without touching agent code, cost profiles that let you dial between development economics and production security posture, and a 13-role agent hierarchy where the model assignments are a runtime configuration rather than baked in. The interesting parts are how the pieces connect, in code you can run `terraform plan` against rather than a diagram.
 
-The engineers this is useful to are building multi-agent systems on Azure and want infrastructure that takes private networking, key management, cost observability, and model abstraction seriously from the start, rather than bolting them on later. It runs in production today; this repo is the open, reusable version of that platform, not a packaged product.
+The engineers this is useful to are building multi-agent systems on Azure and want infrastructure that takes private networking, key management, cost observability, and model abstraction seriously from the start, rather than bolting them on later. This repo is the open, reusable version of that platform, not a packaged product.
