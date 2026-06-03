@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/azureagentforge-icon-dark.png">
-    <img alt="AzureAgentForge" src="assets/azureagentforge-icon-light.png" width="100">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/azureagentforge-logo-dark.png">
+    <img alt="AzureAgentForge" src="assets/azureagentforge-logo-light.png" width="440">
   </picture>
 </p>
 
