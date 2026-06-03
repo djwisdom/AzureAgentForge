@@ -1,0 +1,43 @@
+# Default `docker compose up` starts the working slice: Postgres + model-router.
+# To additionally build PaperClip + Honcho (requires their upstream project
+# sources — see ROADMAP / docs): docker compose --profile full up
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aaf}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-localdev}
+      POSTGRES_DB: ${POSTGRES_DB:-aaf}
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+
+  model-router:
+    build: ./services/model-router
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-azure_foundry}
+      # Primary tier: set AZURE_FOUNDRY_ENDPOINT + AZURE_FOUNDRY_API_KEY,
+      # or GPT4O_BASE_URL + GPT4O_API_KEY directly. Both pairs activate gpt4o-mini.
+      AZURE_FOUNDRY_ENDPOINT: ${AZURE_FOUNDRY_ENDPOINT:-}
+      AZURE_FOUNDRY_API_KEY: ${AZURE_FOUNDRY_API_KEY:-}
+      GPT4O_BASE_URL: ${GPT4O_BASE_URL:-${AZURE_FOUNDRY_ENDPOINT:-}}
+      GPT4O_API_KEY: ${GPT4O_API_KEY:-${AZURE_FOUNDRY_API_KEY:-}}
+      OPENAI_COMPAT_BASE_URL: ${OPENAI_COMPAT_BASE_URL:-}
+      OPENAI_COMPAT_API_KEY: ${OPENAI_COMPAT_API_KEY:-}
+    ports: ["8080:8080"]
+
+  honcho:
+    profiles: ["full"]
+    build: ./services/honcho
+    depends_on: [postgres]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-aaf}:${POSTGRES_PASSWORD:-localdev}@postgres:5432/${POSTGRES_DB:-aaf}
+
+  paperclip:
+    profiles: ["full"]
+    build: ./services/paperclip
+    depends_on: [postgres, model-router, honcho]
+    ports: ["3099:3099"]
+
+volumes:
+  pgdata:

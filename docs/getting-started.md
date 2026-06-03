@@ -1,0 +1,243 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/azureagentforge-icon-dark.png">
+    <img alt="AzureAgentForge" src="assets/azureagentforge-icon-light.png" width="100">
+  </picture>
+</p>
+
+# Getting started
+
+AzureAgentForge runs on four services: a PostgreSQL database with pgvector, a
+model-router that normalises requests to your LLM endpoint, a Honcho memory
+layer, and a Paperclip orchestrator. You can run all four locally with Docker
+Compose or deploy them to Azure Container Apps with Terraform.
+
+Pick a path:
+
+- **Path A — local first.** Good for exploring the codebase or iterating on
+  agents before touching Azure. Requires Docker and an LLM endpoint (Azure AI
+  Foundry or any OpenAI-compatible API).
+- **Path B — deploy to Azure.** Provisions the full infrastructure: Container
+  Registry, PostgreSQL Flexible Server, Key Vault, Container Apps, and
+  optional monitoring. Requires an Azure subscription, `az` CLI, and
+  Terraform >= 1.5.
+
+---
+
+## Prerequisites
+
+| Requirement | Notes |
+|---|---|
+| Azure subscription | Only required for Path B and for Azure AI Foundry endpoints |
+| `az` CLI, logged in | `az login && az account set --subscription <id>` |
+| Terraform >= 1.5 | Path B only |
+| Docker Desktop | Path A; Docker Compose ships with it |
+| LLM endpoint | Azure AI Foundry (primary) or any OpenAI-compatible base URL |
+
+The stack defaults to Azure AI Foundry with grok-4-fast-reasoning as its
+primary model. If you do not have an AI Foundry project yet, set
+`LLM_PROVIDER=openai_compat` and point `OPENAI_COMPAT_BASE_URL` at any
+compatible endpoint (Ollama, vLLM, or a hosted API) instead.
+
+---
+
+## Path A — run it locally
+
+### 1. Copy and fill the environment file
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and fill in the variables for your LLM provider. The minimum
+set for Azure AI Foundry:
+
+```
+LLM_PROVIDER=azure_foundry
+AZURE_FOUNDRY_ENDPOINT=https://<your-project>.openai.azure.com/
+AZURE_FOUNDRY_API_KEY=<your-key>
+```
+
+Or, for any OpenAI-compatible endpoint:
+
+```
+LLM_PROVIDER=openai_compat
+OPENAI_COMPAT_BASE_URL=http://localhost:11434/v1   # example: local Ollama
+OPENAI_COMPAT_API_KEY=ollama                        # placeholder if not required
+```
+
+The Postgres defaults (`POSTGRES_USER=aaf`, `POSTGRES_PASSWORD=localdev`,
+`POSTGRES_DB=aaf`) are fine for local development and are already baked into
+the Compose file. You do not need to set them unless you want different values.
+
+Leave `TELEGRAM_BOT_TOKEN` and `DISCORD_BOT_TOKEN` empty unless you are
+testing bot surfaces locally.
+
+### 2. Start the stack
+
+```bash
+docker compose up
+```
+
+`docker compose up` builds and starts two services: postgres and the
+model-router (from `services/model-router`). Set LLM credentials in `.env` and
+the router registers a tier on startup; leave them blank and it starts with no
+tiers but still accepts requests on port 8080.
+
+| Service | URL | Purpose |
+|---|---|---|
+| model-router | http://localhost:8080 | LLM proxy |
+| postgres | localhost:5432 | Database with pgvector |
+
+PaperClip and Honcho sit behind the `full` Compose profile. Their Dockerfiles
+build from upstream sources (paperclipai/paperclip, plastic-labs/honcho) not
+included in this repo; you need to clone those first. The full local stack with
+PaperClip at localhost:3099 is a one-command experience in v1.1.
+See [ROADMAP.md](../ROADMAP.md).
+
+### 3. Add agents and connect chat surfaces
+
+- To modify or add agent roles, see [`../agents/README.md`](../agents/README.md).
+- To connect a Telegram bot, see [`../integrations/telegram/README.md`](../integrations/telegram/README.md).
+- To connect a Discord bot, see [`../integrations/discord/README.md`](../integrations/discord/README.md).
+
+---
+
+## Path B — deploy to Azure
+
+### 1. Clone and enter the dev environment
+
+```bash
+git clone https://github.com/mrobinson2/AzureAgentForge.git
+cd AzureAgentForge/infrastructure/environments/dev
+```
+
+### 2. Configure Terraform state (or skip it for a dry run)
+
+`backend.tf` is pre-configured for an Azure Storage Account backend. Before
+running `terraform init` against real state, edit `backend.tf` and replace the
+placeholder values:
+
+```hcl
+resource_group_name  = "rg-terraform-state"
+storage_account_name = "YOUR_TF_STATE_STORAGE_ACCOUNT"
+subscription_id      = "00000000-0000-0000-0000-000000000000"
+tenant_id            = "00000000-0000-0000-0000-000000000000"
+```
+
+For a dry run that skips remote state entirely:
+
+```bash
+terraform init -backend=false
+```
+
+For a real deploy, create the storage account first, then:
+
+```bash
+terraform init
+```
+
+### 3. Create your terraform.tfvars
+
+```bash
+cp ../../terraform.tfvars.example terraform.tfvars
+```
+
+`terraform.tfvars.example` contains:
+
+```hcl
+subscription_id = ""   # az account show --query id -o tsv
+location        = "eastus"
+environment     = "dev"
+# Optional surfaces (all default off)
+telegram_enabled = false
+discord_enabled  = false
+```
+
+Fill in your `subscription_id`. Change `location` if you want a different
+Azure region. The `container_registry_name` variable (in `variables.tf`)
+defaults to `"aafregistry"` — this must be globally unique, so override it
+in `terraform.tfvars` if that name is taken.
+
+### 4. Choose a cost profile
+
+Two profiles live in `../../profiles/`:
+
+| Profile | Approx. monthly infra cost | Key trade-offs |
+|---|---|---|
+| `cost-optimized.tfvars` | < $150 | B1ms Postgres, no HA, 30-day logs, public Key Vault endpoint |
+| `hardened.tfvars` | ~$250+ | B2s Postgres, zone-redundant HA, 90-day logs, private Key Vault endpoint |
+
+LLM token usage is billed separately and is not included in those figures.
+
+### 5. Plan and apply
+
+```bash
+terraform plan \
+  -var-file=../../profiles/cost-optimized.tfvars \
+  -var-file=terraform.tfvars
+
+terraform apply \
+  -var-file=../../profiles/cost-optimized.tfvars \
+  -var-file=terraform.tfvars
+```
+
+Terraform provisions a resource group, virtual network, Key Vault, Container
+Registry, PostgreSQL Flexible Server, Container Apps environment, and (if
+enabled) a monitoring workspace. The apply takes roughly 15-20 minutes on a
+fresh subscription.
+
+This step provisions infrastructure. It does not build or push service images.
+Image builds, push, and service startup are v1.1, delivered by the CLI
+installer. See [ROADMAP.md](../ROADMAP.md).
+
+### 6. Seed Key Vault secrets
+
+After apply, the Container Apps pull secrets from Key Vault by name. Seed
+them with the `az` CLI:
+
+```bash
+KV=$(terraform output -raw key_vault_name)
+
+az keyvault secret set --vault-name "$KV" \
+  --name platform-azure-foundry-endpoint \
+  --value "https://<your-project>.openai.azure.com/"
+
+az keyvault secret set --vault-name "$KV" \
+  --name platform-azure-foundry-api-key \
+  --value "<your-key>"
+```
+
+Repeat for any additional model endpoints you enabled (see `.env.example` for
+the full list of secret names, each annotated with its Key Vault secret name).
+
+### 7. After deploy
+
+The Terraform outputs include the Paperclip public URL:
+
+```bash
+terraform output paperclip_fqdn
+```
+
+Open that URL to reach the orchestrator UI.
+
+From here, the same steps as the local path apply:
+
+- Add or modify agents: [`../agents/README.md`](../agents/README.md)
+- Enable Telegram: [`../integrations/telegram/README.md`](../integrations/telegram/README.md)
+- Enable Discord: [`../integrations/discord/README.md`](../integrations/discord/README.md)
+
+---
+
+## Honest expectations
+
+This stack runs in production on Azure — it is a proven platform, and this repo
+is its sanitized, reusable version. What's left to you is setup, not whether it
+works: a clean clone validates and plans without errors; `docker compose up`
+starts postgres and model-router (the full local stack needs `--profile full`
+and upstream sources, one-command in v1.1); and `terraform apply` provisions the
+infrastructure. Building and pushing the service images, IAM/auth between GitHub
+and Azure, and secret seeding are manual today and become a single command in
+the v1.1 CLI installer. The cloud prerequisites — your Azure subscription, an AI
+Foundry project (or substitute endpoint), Terraform state storage — are yours to
+provide. Cost figures are estimates pending your own bill.

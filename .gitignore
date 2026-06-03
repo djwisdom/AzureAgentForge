@@ -1,0 +1,21 @@
+# secrets & state
+.env
+.env.*
+!.env.example
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+!infrastructure/profiles/*.tfvars
+.terraform/
+*.pem
+*.key
+secrets/
+# python
+__pycache__/
+*.pyc
+.agents-venv/
+.router-venv/
+*-venv/
+# os/editor
+.DS_Store
