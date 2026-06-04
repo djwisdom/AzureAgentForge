@@ -31,13 +31,13 @@ Every service runs inside a single Azure VNet. PostgreSQL is VNet-injected with 
 
 Key Vault uses the RBAC model. Containers fetch their secrets at startup; credentials are never stored in environment variables or container definitions. In the `hardened` profile, Key Vault's public network access is disabled and requires a private endpoint. Someone who compromises the container image cannot reach the secret store without being inside the VNet.
 
-The two profiles, `cost-optimized` and `hardened`, are `.tfvars` files that flip a coordinated set of variables: HA mode on PostgreSQL, log retention duration, whether Cloudflared replaces the ACA managed ingress, Key Vault endpoint visibility. The `hardened` profile costs roughly $250+/month versus $70-115 for cost-optimized. That gap comes mostly from the PostgreSQL zone-redundant standby, 90-day log retention, and the Cloudflared sidecar that runs permanently.
+The two profiles, `cost-optimized` and `hardened`, are `.tfvars` files that flip a coordinated set of variables: HA mode on PostgreSQL, log retention duration, whether Cloudflared replaces the ACA managed ingress, Key Vault endpoint visibility. The `hardened` profile costs roughly $250+/month versus about $90 for cost-optimized (validated against a live deployment — see [`docs/cost.md`](cost.md)). That gap comes mostly from the PostgreSQL zone-redundant standby, 90-day log retention, and the Cloudflared sidecar that runs permanently.
 
 Setting up the private endpoint correctly requires a private DNS zone (`privatelink.vaultcore.azure.net`), a VNet link, and a DNS A record. Azure handles all of that through the portal click-through. In Terraform you spell it out yourself. Get it wrong and your containers start and immediately fail to resolve `<vault-name>.vault.azure.net`. The error looks like an auth problem. It is a DNS problem.
 
 ## Where the cost surprises are
 
-Log Analytics is easy to underestimate and the most common place to be surprised. The cost-optimized profile caps daily ingestion at 1 GB and retention at 30 days. Both caps are active choices; the defaults are higher. Remove either and a verbose service can generate 3-5 GB/day in development. Log Analytics bills per GB ingested. The estimate in `docs/cost.md` is $5-15/month with the cap in place. Without it, that number climbs fast and the bill arrives before you notice.
+Log Analytics is easy to underestimate and the most common place to be surprised. The cost-optimized profile caps daily ingestion at 1 GB and retention at 30 days. Both caps are active choices; the defaults are higher. Remove either and a verbose service can generate 3-5 GB/day in development. Log Analytics bills per GB ingested. With the cap in place it is $0-15/month — often near zero at dev-level ingestion, as the validated figures in `docs/cost.md` show. Without the cap, that number climbs fast and the bill arrives before you notice.
 
 Pinning `min_replicas = 1` on Hermes to avoid cold starts costs roughly $10-15/month per replica at 0.25 vCPU / 0.5 GB. Not catastrophic, but it is not the zero you were expecting from "scale to zero."
 
