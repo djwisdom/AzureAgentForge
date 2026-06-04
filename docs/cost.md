@@ -9,26 +9,26 @@
 
 > ✅ **Validated against a real deployment.** The figures below are grounded in Azure Cost Management data from a live deployment's resource group (`ActualCost`, May 2026, Central US), mapped to this repo's `cost-optimized` profile. They exclude components the live resource group carries but this repo does not provision (a CI build-agent VM, automation workflows, and a model subscription), and they exclude Cloudflared, which this profile leaves off. Your bill will still vary with region, activity level, and especially Azure Files transaction volume. **LLM token usage is billed separately and is NOT included here.**
 
-Cost depends on your region, your activity level, and which profile you deploy. The table below is the `cost-optimized` default (`infrastructure/profiles/cost-optimized.tfvars`): a modeled range alongside what each line actually cost in a live deployment.
+Cost depends on your region, your activity level, and which profile you deploy. The table below is the `cost-optimized` default (`infrastructure/profiles/cost-optimized.tfvars`), showing what each line actually cost — per resource — in a live deployment for May 2026. Your own figures will vary, especially Container Apps (idle vs. busy workers) and Azure Files (billed per transaction).
 
 ## Cost-optimized profile
 
-| Service | Config | $/mo |
+| Service | Config | Observed (May 2026) |
 |---|---|---|
-| Container Apps (Consumption) | PaperClip + Hermes + Honcho + deriver job; two responsive, the rest scale-to-zero | ~$38–50 |
-| Azure Files (Standard LRS) | SMB share mounted for Hermes/PaperClip state; **billed per transaction** | ~$5–22 |
-| PostgreSQL Flexible Server | Burstable B1ms, 32 GB, no HA | ~$18 |
-| Container Registry | Basic | ~$6–9 |
-| Log Analytics | 30-day retention, 1 GB/day cap | ~$0–15 |
-| Networking | VNet + private DNS zone + egress | ~$4–5 |
+| Container Apps (Consumption) | PaperClip + Hermes + Honcho + deriver job; two responsive, the rest scale-to-zero | $39 |
+| PostgreSQL Flexible Server | Burstable B1ms, 32 GB, no HA | $18 |
+| Azure Files (Standard LRS) | SMB share mounted for Hermes/PaperClip state; **billed per transaction** | $17 |
+| Container Registry | Basic | $9 |
+| Networking | private DNS zone + egress | <$1 |
 | Key Vault | Standard, light op volume | <$1 |
-| **Infra total (excl. LLM tokens)** | | **~$75–120** |
+| Log Analytics | 30-day retention, 1 GB/day cap | $0 |
+| **Infra total (excl. LLM tokens)** | | **~$83** |
 
-In the live deployment the cost-optimized component set ran about **$90/month** — comfortably under the $150 target. The two biggest variables are Container Apps (idle vs. running workers) and Azure Files, whose share is billed per SMB transaction, so chatty agents cost more than quiet ones.
+That **~$83/month** is comfortably under the $150 target, with the always-on PaperClip container and the Azure Files share the two largest lines. Both scale with how hard you run the platform: Container Apps with worker activity, Azure Files with SMB transaction volume, so a chattier fleet costs more than a quiet one.
 
 ### How these were validated
 
-The numbers come from Azure Cost Management for a live deployment's resource group, filtered to the resources this repo actually provisions. Postgres (B1ms / 32 GB / no-HA), the Container Registry (Basic), and Key Vault matched the profile one-to-one — about $18, $9, and well under $1 respectively. Container Apps ran ~$50 across five running containers; this profile omits one of them (Cloudflared), so its share is lower. The line most under-counted in the original estimate was **Azure Files**: under active multi-agent traffic it reached ~$22, almost entirely SMB operations rather than the 5 GiB of stored data. Log Analytics, in that month, stayed within the free allotment and cost effectively nothing.
+The figures come from Azure Cost Management (`ActualCost`, May 2026), broken out per resource and filtered to exactly what this profile provisions. The four Container Apps in scope — PaperClip ($25), Hermes ($12), Honcho, and the deriver job — totalled about **$39**, with the always-on PaperClip container the largest single line. Postgres (B1ms / 32 GB / no-HA) was **$18**, the Container Registry (Basic) **$9**, the Azure Files share **$17**, Key Vault **$0.16**, the private DNS zone **$0.51**, and the Log Analytics workspace **$0** (dev-level ingestion stayed within the free allotment). Azure Files was almost entirely SMB transactions rather than the 5 GiB of stored data — which is why it tracks agent activity, not disk usage. The live resource group also ran a Cloudflared sidecar, a chat-bridge container, and a CI build-agent VM (roughly $6, $6, and $10 together with its disk and IP) — none of which this profile includes, so they are excluded above.
 
 ## What drives cost
 
