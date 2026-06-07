@@ -54,6 +54,8 @@ jobs:
           pip install -r agents/requirements-dev.txt
           python agents/validate_profiles.py
           pytest -q agents/tests
+      - name: replay fixtures
+        run: python tests/replay/validate_fixtures.py
       - name: model-router
         run: |
           pip install -r services/model-router/requirements.txt -r services/model-router/requirements-dev.txt
