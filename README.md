@@ -281,7 +281,24 @@ This is not a replacement for the installer. It is a guided setup assistant for 
 
 ## Quickstart
 
-Prefer a guided walkthrough before running commands? Start with [`AI-ASSISTED-SETUP.md`](AI-ASSISTED-SETUP.md). It gives Claude Code or Codex a structured prompt to inspect the repo and guide you through setup step by step.
+### Forge Console — the turnkey path
+
+```bash
+./forge
+```
+
+One command starts a local web console that walks the whole deployment:
+prerequisite checks (Terraform, `az` login, Docker), a configuration form
+that writes your `terraform.tfvars` (with preview), then live-streamed
+`init → validate → plan → apply` in a terminal pane. Local Terraform state
+is handled automatically, so a first deploy needs zero pre-provisioned
+infrastructure. `apply` and `destroy` require typing the environment name —
+no accidental clicks. Details and the security model:
+[`installer/README.md`](installer/README.md).
+
+Prefer a guided walkthrough with an AI assistant instead? Start with
+[`AI-ASSISTED-SETUP.md`](AI-ASSISTED-SETUP.md). Prefer plain commands? Both
+manual paths follow.
 
 ### Local
 
@@ -314,6 +331,9 @@ See [`docs/getting-started.md`](docs/getting-started.md) for the full local walk
 ---
 
 ### Azure
+
+The Forge Console automates this path end to end. The equivalent manual
+sequence:
 
 ```bash
 # Initialize Terraform
@@ -374,19 +394,18 @@ See [`docs/getting-started.md`](docs/getting-started.md) for the full Azure walk
 
 ### Coming in v1.1
 
-- ⬜ CLI installer
+- ✅ Forge Console — local web GUI installer (`./forge`), superseding the planned ANSI TUI
 - ✅ AI-assisted setup documentation using Claude Code or Codex
-- ⬜ ANSI terminal UI for guided setup
-- ⬜ Preflight checks
-- ⬜ Azure configuration wizard
-- ⬜ Automated Terraform provision flow
+- ✅ Preflight checks (Terraform, `az` login, Docker, subscription detection)
+- ✅ Azure configuration wizard (tfvars form with preview + local-state backend handling)
+- ✅ Automated Terraform provision flow (live-streamed init/validate/plan/apply with typed confirmations)
 - ⬜ Image build and push automation
 - ⬜ Key Vault secret seeding
 - ⬜ Full service deployment automation
 - ⬜ Smoke tests after deployment
 - ⬜ One-command full local stack
 - ⬜ Full Microsoft Teams integration
-- ⬜ Measured Azure cost figures based on real bills
+- ✅ Measured Azure cost figures based on real bills
 - ⬜ First fully validated end-to-end Azure deployment from a clean subscription
 
 ### Future releases

@@ -13,9 +13,20 @@ This stack runs in production on Azure; v1.0 is its sanitized, reusable version.
 
 `docker compose up` runs the working slice: Postgres and the model-router.
 
-## v1.1 — next
+## v1.1 — in progress
 
-A CLI installer with an ANSI TUI covers the full sequence: preflight, config, provision, image build and push for PaperClip/Honcho/agent-runtime, Key Vault seeding, deploy, smoke test. One-command full local stack via `docker compose --profile full up`. Measured cost figures replacing the current estimates. First end-to-end Azure deploy, validated against a live subscription.
+**Shipped: the Forge Console** (`./forge`) — a local web GUI that replaced the
+originally planned ANSI TUI. It covers preflight checks, an Azure
+configuration wizard with tfvars preview, automatic local-state backend
+handling, and a live-streamed `init → validate → plan → apply` flow with
+typed confirmations for apply/destroy. The plan stage is validated against a
+live subscription (39 resources on the cost-optimized profile). Measured cost
+figures from real bills landed in [`docs/cost.md`](docs/cost.md).
+
+**Remaining for v1.1:** image build and push for PaperClip/Honcho/agent-runtime,
+Key Vault secret seeding, post-deploy smoke tests, one-command full local
+stack via `docker compose --profile full up`, and the first fully validated
+end-to-end Azure deploy from a clean subscription.
 
 ## Later
 

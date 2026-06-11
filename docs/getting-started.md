@@ -14,6 +14,10 @@ Compose or deploy them to Azure Container Apps with Terraform.
 
 Pick a path:
 
+- **Path 0 — Forge Console (recommended).** Run `./forge` from the repo root
+  and a local web console handles both paths below: prerequisite checks, a
+  configuration form, and live-streamed Terraform runs (or the Docker Compose
+  working slice). See [`installer/README.md`](../installer/README.md).
 - **Path A — local first.** Good for exploring the codebase or iterating on
   agents before touching Azure. Requires Docker and an LLM endpoint (Azure AI
   Foundry or any OpenAI-compatible API).

@@ -60,5 +60,9 @@ jobs:
         run: |
           pip install -r services/model-router/requirements.txt -r services/model-router/requirements-dev.txt
           pytest -q services/model-router/tests
+      - name: forge console (installer)
+        run: |
+          pip install -r installer/requirements.txt pytest httpx
+          pytest -q installer/tests
       - name: compileall
-        run: python -m compileall services
+        run: python -m compileall services installer
