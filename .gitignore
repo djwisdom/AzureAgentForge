@@ -24,5 +24,7 @@ __pycache__/
 .agents-venv/
 .router-venv/
 *-venv/
+# demo render tooling (Playwright is installed on demand by demos/make-demos.sh)
+node_modules/
 # os/editor
 .DS_Store

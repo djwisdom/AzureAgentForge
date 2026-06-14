@@ -12,6 +12,16 @@ enters the platform. It traces one request — *"delete this resource group"* �
 through every control that stands between it and irreversible damage, and shows
 where each control stops it.
 
+<p align="center">
+  <img alt="An agent refuses a destructive task" src="../assets/governance-refusal.gif" width="760"><br>
+  <em>The orchestrator refuses "delete this resource group" — scope-guard + forbidden-tool block, with the full audit trail (reproducible replay fixture).</em>
+</p>
+
+<p align="center">
+  <img alt="Destroy-aware approval gate in the deploy console" src="../assets/destroy-approval-dialog.png" width="620"><br>
+  <em>At the IaC layer, the deploy console's destroy-aware gate blocks any plan that deletes or replaces resources behind an explicit, separate human approval.</em>
+</p>
+
 The point is not that any single layer is bulletproof. The point is that the
 layers are independent: a request has to defeat all of them, and each one is
 designed so that the *default* outcome is "nothing destructive happens." The
