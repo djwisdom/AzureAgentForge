@@ -107,6 +107,13 @@ Honcho stores per-session and per-user memories for agents. It sits in front of 
 
 Both Honcho and PostgreSQL are private; no agent memory leaves the VNet.
 
+> **Beyond basic memory.** The shipped stack uses Honcho's native session/user
+> memory directly. A fuller **governed-memory** model — admission control,
+> six memory classes, a four-plane retrieval planner, computed trust, contradiction
+> detection, and a self-improvement loop — is documented as a design reference in
+> [`design/memory-system.md`](design/memory-system.md). That governor service is
+> *not* bundled in this repository; the doc is the architecture to build toward.
+
 ### PostgreSQL Flexible Server
 
 **Role:** primary data store for agent memory (Honcho), tenant registry, sync state, and audit logs.  
@@ -214,9 +221,13 @@ subscription and credentials are not bundled here.
 | `docker-compose.yml` (local dev stack) | proven | Local working slice (postgres + model-router); full stack via `--profile full` |
 | Cost profiles (`cost-optimized`, `hardened`) | proven | In use; repo CI plans clean for both |
 | Multi-tenancy (schema-per-tenant, RLS, per-tenant routing) | design target | ~20-30% implemented; not yet deployed; see [`../roadmap/multi-tenant/`](../roadmap/multi-tenant/) |
+| Governed memory (planes/classes/trust/self-improvement loop) | design reference | Documented in [`design/memory-system.md`](design/memory-system.md); governor service not bundled in this repo |
+| Reference deploy pipeline (destroy-aware approval gate) | reference | [`deploy-pipeline.md`](deploy-pipeline.md) + `.github/workflows/deploy.yml`; adopters wire to their own subscription |
 
 **Status vocabulary:**
 - `proven` — deployed and running in the maintainer's production Azure environment. This repository is the sanitized version; standing up your own instance takes manual setup (subscription, IAM/auth, building and deploying the OSS components, secret seeding), automated by the v1.1 CLI installer.
 - `design target` — design is substantially complete; implementation is partial or a scaffold; not yet deployed.
+- `design reference` — a complete, implementable architecture is documented here, but the implementing code is intentionally not bundled in this repository.
+- `reference` — a ready-to-adapt template (e.g. a workflow) that adopters wire to their own subscription; not run by this repo's CI.
 
 For the multi-tenancy roadmap, see [`../roadmap/multi-tenant/README.md`](../roadmap/multi-tenant/README.md).

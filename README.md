@@ -10,9 +10,11 @@
 
 <p align="center">
   <a href="#platform-status"><img src="https://img.shields.io/badge/status-running%20on%20Azure-brightgreen" alt="Status"></a>
+  <a href="ROADMAP.md"><img src="https://img.shields.io/badge/release-v1.1-blue" alt="Release v1.1"></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
   <a href="#quickstart"><img src="https://img.shields.io/badge/IaC-Terraform-623CE4" alt="Terraform"></a>
   <a href="#why-azureagentforge"><img src="https://img.shields.io/badge/cloud-Azure-0078D4" alt="Azure"></a>
+  <a href="docs/walkthroughs/governance-and-blast-radius.md"><img src="https://img.shields.io/badge/demo-governance%20refusal-FF6B00" alt="Governance demo"></a>
 </p>
 
 ---
@@ -37,6 +39,43 @@ Most LLM calls are routed through **Azure AI Foundry**, which keeps model integr
 It is not trying to be another cute local demo.
 
 It is a practical starting point for people who want agent teams they can deploy, monitor, constrain, talk to, and improve.
+
+---
+
+## See it in action
+
+A quick tour of the orchestrator UI — the dashboard, agent roster, issue board, and a live org chart of an agent team at work:
+
+<p align="center">
+  <img alt="PaperClip orchestrator UI — dashboard, agents, issue board, and org chart" src="docs/assets/paperclip-ui-demo.gif" width="820">
+</p>
+
+And the part most demos skip: what happens when a request is *dangerous*. Here's an agent refusing one.
+
+<p align="center">
+  <img alt="An agent refuses a destructive task" src="docs/assets/governance-refusal.gif" width="760"><br>
+  <em>A user asks the orchestrator to "delete this resource group." It doesn't — scope-guard plus a forbidden-tool block, with a full audit trail. A reproducible <a href="tests/replay/">replay fixture</a>, not a staged screenshot.</em>
+</p>
+
+<p align="center">
+  <img alt="Destroy-aware approval gate" src="docs/assets/destroy-gate.gif" width="760"><br>
+  <em>At the infrastructure layer, the destroy-aware gate lets routine changes apply unattended but blocks any plan that <strong>deletes or replaces</strong> a resource behind an explicit human approval.</em>
+</p>
+
+Want the full trace of every layer between a destructive request and irreversible damage? Read the [**governance &amp; blast-radius walkthrough →**](docs/walkthroughs/governance-and-blast-radius.md)
+
+---
+
+## What's new
+
+New in v1.1 (since the v1.0 open-source release):
+
+- **Governance &amp; blast-radius walkthrough** — a destructive request traced through every control that refuses it, backed by reproducible replay fixtures and the demos above.
+- **Destroy-aware approval gate** — in the Forge Console *and* as a reference CI/CD pipeline ([`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)): routine plans apply unattended; any delete/replace blocks on human approval. OIDC auth, no stored secrets ([setup](docs/deploy-pipeline.md)).
+- **Forge Console** (`./forge`) — a local web installer that runs preflight checks and a live-streamed `init → validate → plan → apply`, with typed confirmations for `apply`/`destroy`.
+- **Governed-memory architecture reference** — the four-plane / six-class memory model with computed trust, contradiction detection, and a self-improvement loop, documented to build toward ([`docs/design/memory-system.md`](docs/design/memory-system.md)).
+- **14 golden orchestration replay fixtures** — regression tests that pin agent routing and refusal behavior ([`tests/replay/`](tests/replay/)).
+- **Measured Azure costs** — figures validated against real bills (~$83/mo observed on cost-optimized), not just models ([`docs/cost.md`](docs/cost.md)).
 
 ---
 
@@ -72,7 +111,7 @@ The platform gives your agents a place to work, remember, call tools, stay withi
                     |                    PaperClip                      |
                     |          Orchestrator, UI, task dashboard          |
                     |      Optional Telegram / Discord chat bridges      |
-                    |      Microsoft Teams integration planned in v1.1   |
+                    |      Microsoft Teams integration planned in v1.2   |
                     +----------------------+----------------------------+
                                            |
                                            | dispatches work
@@ -170,6 +209,15 @@ The agent team uses role profiles that define model tier and allowed toolsets. R
 
 A dedicated `CostGuardian` role exists specifically to watch spend.
 
+### Governance you can watch refuse a dangerous task
+
+When a destructive request lands — *"delete this resource group"* — the controls
+are independent and layered: the orchestrator's scope-guard, forbidden-tool
+blocks, role→tier routing, and a destroy-aware approval gate at the IaC layer.
+Each is designed so the *default* outcome is "nothing destructive happens," and a
+request has to defeat all of them. See it traced end to end, with reproducible
+replay fixtures, in the [governance &amp; blast-radius walkthrough](docs/walkthroughs/governance-and-blast-radius.md).
+
 ### Deployable on Azure, not just runnable on a laptop
 
 Terraform provisions the Azure foundation, including:
@@ -200,7 +248,7 @@ discord_enabled  = true
 
 Both are off by default.
 
-Full Microsoft Teams integration is planned for v1.1 so agent teams can move closer to the place many organizations already coordinate work.
+Full Microsoft Teams integration is planned for v1.2 so agent teams can move closer to the place many organizations already coordinate work.
 
 ### Voice as a first-class interface
 
@@ -234,7 +282,7 @@ AzureAgentForge gives you the starting foundation: orchestration, runtime, memor
 
 ## What is included today
 
-AzureAgentForge v1.0 includes the working foundation of the platform:
+As of v1.1, AzureAgentForge includes:
 
 - Full Terraform IaC for the Azure foundation
 - Two infrastructure cost profiles
@@ -248,9 +296,13 @@ AzureAgentForge v1.0 includes the working foundation of the platform:
 - Private VNet design
 - Local working slice with PostgreSQL and the model router
 - Optional Telegram and Discord surfaces
+- Governance & blast-radius walkthrough with reproducible replay fixtures
+- Destroy-aware approval gate (Forge Console + reference CI/CD pipeline)
+- 14 golden orchestration replay fixtures (agent-behavior regression tests)
+- Governed-memory architecture reference (design reference; governor code not bundled)
 - Multi-tenant architecture design and early scaffolding
 
-The current local quickstart brings up PostgreSQL and the model router. The full one-command local stack and full end-to-end Azure installer are planned for v1.1.
+The current local quickstart brings up PostgreSQL and the model router. The full one-command local stack and full end-to-end Azure installer are planned for v1.2.
 
 ---
 
@@ -258,9 +310,9 @@ The current local quickstart brings up PostgreSQL and the model router. The full
 
 AzureAgentForge is not a one-click SaaS product.
 
-The v1.0 release gives you the architecture, Terraform, model router, role schema, Docker/config scaffolding, and a working local slice. Standing up the full Azure deployment still takes real setup work: Azure subscription, GitHub-to-Azure IAM, image build and push, Key Vault seeding, and environment configuration.
+The v1.1 release gives you the architecture, Terraform, model router, role schema, Docker/config scaffolding, a working local slice, the Forge Console, and a reference deploy pipeline. Standing up the full Azure deployment still takes real setup work: Azure subscription, GitHub-to-Azure IAM, image build and push, Key Vault seeding, and environment configuration.
 
-The v1.1 CLI installer is intended to automate that full path.
+Full end-to-end deploy automation is planned for v1.2.
 
 If you want magic, this is not magic.
 
@@ -271,7 +323,7 @@ If you want a serious foundation you can inspect, fork, improve, and run in your
 
 ## AI-assisted setup
 
-Until the v1.1 CLI installer is available, AzureAgentForge includes an AI-assisted setup path.
+Alongside the Forge Console (`./forge`), AzureAgentForge includes an AI-assisted setup path.
 
 Use [`AI-ASSISTED-SETUP.md`](AI-ASSISTED-SETUP.md) with Claude Code, Codex, or another coding agent that can inspect your local repo. The prompt walks the agent through repo discovery, local setup, Azure prerequisites, Terraform deployment, container image build and push, Key Vault configuration, Azure AI Foundry model routing, optional integrations, and post-deployment smoke testing.
 
@@ -324,7 +376,7 @@ docker compose --profile full up
 
 plus upstream sources.
 
-A one-command full local stack is planned for v1.1.
+A one-command full local stack is planned for v1.2.
 
 See [`docs/getting-started.md`](docs/getting-started.md) for the full local walkthrough.
 
@@ -359,7 +411,7 @@ terraform -chdir=infrastructure/environments/dev apply \
 
 This provisions infrastructure. It does not yet build and push all service images or seed every runtime secret.
 
-A complete end-to-end deploy flow is planned for the v1.1 CLI installer.
+A complete end-to-end deploy flow is planned for v1.2.
 
 See [`docs/getting-started.md`](docs/getting-started.md) for the full Azure walkthrough, including Key Vault secret seeding.
 
@@ -369,43 +421,57 @@ See [`docs/getting-started.md`](docs/getting-started.md) for the full Azure walk
 
 ### Available now
 
-- ✅ Azure-hosted production stack open-sourced
-- ✅ Full Terraform IaC
-- ✅ Azure Container Apps foundation
-- ✅ PostgreSQL Flexible Server with pgvector
-- ✅ Private VNet architecture
-- ✅ Azure Key Vault secret pattern
-- ✅ Log Analytics integration
-- ✅ Two infrastructure cost profiles
-- ✅ 13 predefined agent roles
-- ✅ Agent role schema with automated tests
-- ✅ Model router running locally
-- ✅ Azure AI Foundry-first LLM integration pattern
-- ✅ OpenAI-compatible model router API
-- ✅ Per-tier daily budget caps
-- ✅ Azure AI Foundry as primary model backend
-- ✅ OpenAI-compatible fallback backend
-- ✅ Dockerfiles and service configuration
-- ✅ Local working slice with PostgreSQL and model router
-- ✅ Optional Telegram bridge
-- ✅ Optional Discord bridge
-- ✅ Multi-tenant architecture designed
-- ✅ Early multi-tenant scaffolding
+**Foundation (Terraform + Azure)**
+- ✅ Azure-hosted production stack, open-sourced
+- ✅ Full Terraform IaC — Container Apps, PostgreSQL Flexible Server (pgvector), ACR, Key Vault, Log Analytics, private VNet
+- ✅ Two cost profiles (cost-optimized < $150/mo, hardened) — CI plans both clean
+- ✅ Measured Azure costs from real bills
 
-### Coming in v1.1
+**Agents & models**
+- ✅ 13 predefined agent roles + schema with automated tests
+- ✅ Model router (local) — Azure AI Foundry primary, OpenAI-compatible fallback
+- ✅ Per-tier daily budget caps
+- ✅ 14 golden orchestration replay fixtures (agent-behavior regression tests)
+
+**Governance & safety**
+- ✅ Role-scoped toolsets + a dedicated `CostGuardian` role
+- ✅ Destroy-aware approval gate — Forge Console + reference CI/CD pipeline (OIDC, no stored secrets)
+- ✅ Governance & blast-radius walkthrough with demos
+- ✅ Key Vault secret pattern + private-by-default networking
+
+**Install & operate**
+- ✅ Forge Console (`./forge`) — local web installer with live-streamed deploy
+- ✅ AI-assisted setup path (Claude Code / Codex)
+- ✅ Local working slice (PostgreSQL + model router)
+- ✅ Log Analytics integration
+
+**Interfaces & scale**
+- ✅ Optional Telegram + Discord surfaces
+- ✅ Multi-tenant architecture designed + early scaffolding
+
+**Design references** *(architecture to build toward; code not bundled)*
+- 📐 Governed memory — four planes, six classes, computed trust, self-improvement loop ([`docs/design/memory-system.md`](docs/design/memory-system.md))
+
+### Shipped in v1.1
 
 - ✅ Forge Console — local web GUI installer (`./forge`), superseding the planned ANSI TUI
 - ✅ AI-assisted setup documentation using Claude Code or Codex
 - ✅ Preflight checks (Terraform, `az` login, Docker, subscription detection)
 - ✅ Azure configuration wizard (tfvars form with preview + local-state backend handling)
-- ✅ Automated Terraform provision flow (live-streamed init/validate/plan/apply with typed confirmations)
+- ✅ Automated Terraform provision flow (live-streamed init/validate/plan/apply with typed confirmations and a destroy-aware apply gate)
+- ✅ Reference CI/CD deploy pipeline — GitHub Actions, OIDC auth (no stored secrets), with the same destroy-aware approval gate ([`docs/deploy-pipeline.md`](docs/deploy-pipeline.md))
+- ✅ Governance & blast-radius walkthrough with reproducible replay fixtures and demos
+- ✅ Governed-memory architecture reference ([`docs/design/memory-system.md`](docs/design/memory-system.md))
+- ✅ Measured Azure cost figures based on real bills
+
+### Coming in v1.2
+
 - ⬜ Image build and push automation
 - ⬜ Key Vault secret seeding
 - ⬜ Full service deployment automation
 - ⬜ Smoke tests after deployment
-- ⬜ One-command full local stack
+- ⬜ One-command full local stack (`docker compose --profile full up`)
 - ⬜ Full Microsoft Teams integration
-- ✅ Measured Azure cost figures based on real bills
 - ⬜ First fully validated end-to-end Azure deployment from a clean subscription
 
 ### Future releases
@@ -496,6 +562,8 @@ Multi-tenant support is designed and partially scaffolded.
 | [`docs/security.md`](docs/security.md) | Secrets, network posture, and pre-production checklist |
 | [`docs/why-azure.md`](docs/why-azure.md) | The case for building agents on Azure |
 | [`docs/agents.md`](docs/agents.md) | The 13-role model and how to add your own |
+| [`docs/design/memory-system.md`](docs/design/memory-system.md) | Governed-memory architecture reference (four planes, six classes, trust model, self-improvement loop) — design reference; governor code not bundled |
+| [`docs/deploy-pipeline.md`](docs/deploy-pipeline.md) | Reference GitHub Actions deploy pipeline with a destroy-aware approval gate (OIDC, no stored secrets) |
 
 ---
 
