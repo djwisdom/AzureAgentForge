@@ -110,6 +110,22 @@ def test_select_tier_persona_lookup():
         main.PERSONA_TIERS.update(original)
 
 
+def test_select_tier_unknown_persona_defaults_to_gpt4o_mini():
+    """An unmapped persona falls back to the default tier instead of erroring."""
+    original = dict(main.PERSONA_TIERS)
+    main.PERSONA_TIERS.clear()
+    main.PERSONA_TIERS["known-persona"] = "phi4"
+    try:
+        tier = main.select_tier({
+            "persona": "unknown-persona",
+            "messages": [{"role": "user", "content": "hi"}],
+        })
+        assert tier == "gpt4o-mini"
+    finally:
+        main.PERSONA_TIERS.clear()
+        main.PERSONA_TIERS.update(original)
+
+
 # ── _build_fallback_chain ────────────────────────────────────────────────────
 
 def test_fallback_chain_is_list_of_registered_tiers():
