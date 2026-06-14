@@ -227,8 +227,8 @@ def build_step_command(step: str, profile: str, tf_dir: Path = TF_DIR,
     commands = {
         "init":     tf + ["init", "-input=false"],
         "validate": tf + ["validate"],
-        "plan":     tf + ["plan", "-input=false", f"-var-file={profile_file}", "-out=tfplan"],
-        "apply":    tf + ["apply", "-input=false", "tfplan"],
+        "plan":     tf + ["plan", "-input=false", f"-var-file={profile_file}", f"-out={PLAN_FILE}"],
+        "apply":    tf + ["apply", "-input=false", PLAN_FILE],
         "destroy":  tf + ["destroy", "-input=false", f"-var-file={profile_file}", "-auto-approve"],
         "output":   tf + ["output", "-no-color"],
         "compose-up":   ["docker", "compose", "up", "-d", "--build"],
@@ -246,6 +246,65 @@ DANGEROUS_STEPS = {"apply", "destroy", "compose-down"}
 
 # plan/apply/destroy must not run before the config exists.
 NEEDS_CONFIG = {"plan", "apply", "destroy"}
+
+# The saved plan file produced by `plan` and consumed verbatim by `apply`.
+PLAN_FILE = "tfplan"
+
+# A separate, deliberately-distinct token the operator must type to approve an
+# apply whose plan would delete or replace resources. Louder than the ordinary
+# environment-name confirmation so a destructive apply can't be waved through.
+DESTROY_APPROVAL_TOKEN = "approve-destroy"
+
+
+# ---------------------------------------------------------------------------
+# Destroy-aware apply gate
+# ---------------------------------------------------------------------------
+
+def plan_has_destroy(plan_json: dict) -> tuple[bool, list[str]]:
+    """Return (has_destroy, [addresses]) for a `terraform show -json` plan.
+
+    A destroy is any resource change whose ``actions`` contain ``"delete"``:
+    a pure delete (``["delete"]``) and both replace orderings
+    (``["delete","create"]`` / ``["create","delete"]``) all count. Pure-Python,
+    no Terraform invocation — so it is trivially unit-testable.
+    """
+    destroyed: list[str] = []
+    for rc in (plan_json or {}).get("resource_changes", []) or []:
+        actions = ((rc or {}).get("change") or {}).get("actions") or []
+        if "delete" in actions:
+            addr = rc.get("address") or rc.get("name") or "<unknown>"
+            destroyed.append(addr)
+    return (bool(destroyed), destroyed)
+
+
+def show_plan_json(profile: str, tf_dir: Path = TF_DIR) -> dict:
+    """Run ``terraform show -json <planfile>`` and return the parsed JSON.
+
+    Reads the saved plan only; never re-plans and never applies. Raises
+    ``RuntimeError`` if the plan file is missing or terraform/JSON parsing
+    fails, so callers can surface a clear error instead of guessing.
+    """
+    plan_path = tf_dir / PLAN_FILE
+    if not plan_path.exists():
+        raise RuntimeError("no saved plan — run 'plan' before inspecting or applying")
+    cmd = ["terraform", f"-chdir={tf_dir}", "show", "-json", PLAN_FILE]
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=120,
+                             env={**os.environ, "TF_IN_AUTOMATION": "1"})
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise RuntimeError(f"could not read the saved plan: {e}") from e
+    if out.returncode != 0:
+        raise RuntimeError(f"terraform show failed: {(out.stderr or out.stdout).strip()[:200]}")
+    try:
+        return json.loads(out.stdout)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"could not parse plan JSON: {e}") from e
+
+
+def inspect_saved_plan(profile: str, tf_dir: Path = TF_DIR) -> dict:
+    """Summarise the saved plan for the apply gate: destroy verdict + addresses."""
+    has_destroy, destroyed = plan_has_destroy(show_plan_json(profile, tf_dir))
+    return {"has_destroy": has_destroy, "destroyed": destroyed}
 
 
 @dataclass

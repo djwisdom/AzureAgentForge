@@ -10,6 +10,8 @@ Security model for a localhost tool:
     malicious site can't fabricate requests to your console.
   - Cross-origin requests are rejected by an Origin allowlist.
   - apply / destroy additionally require typing the environment name.
+  - apply is destroy-aware: if the saved plan would delete or replace any
+    resource, it is blocked behind a second, distinct approval token.
 """
 
 from __future__ import annotations
@@ -101,9 +103,23 @@ def configure(body: ConfigBody, request: Request) -> dict:
     return {"preview": preview, "written": True, **written}
 
 
+@app.get("/api/plan-summary")
+def plan_summary(request: Request) -> dict:
+    """Inspect the saved plan for destructive actions so the GUI can warn
+    before apply. Reads the plan file only — never plans or applies."""
+    _guard(request)
+    if not _last_config:
+        raise HTTPException(409, "write the configuration first (Configure tab)")
+    try:
+        return core.inspect_saved_plan(_last_config.get("profile", "cost-optimized"))
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+
+
 class RunBody(BaseModel):
     step: str
     confirm: str = ""
+    approve_destroy: str = ""
 
 
 @app.post("/api/run")
@@ -117,6 +133,22 @@ def run_step(body: RunBody, request: Request) -> dict:
         if body.confirm != expected:
             raise HTTPException(
                 428, f"type the environment name ('{expected}') to confirm '{step}'")
+    # Destroy-aware gate: an apply whose saved plan deletes or replaces any
+    # resource is blocked behind a second, distinct approval. The server
+    # re-inspects the plan itself, so the gate can't be bypassed from the client.
+    if step == "apply":
+        try:
+            summary = core.inspect_saved_plan(_last_config.get("profile", "cost-optimized"))
+        except RuntimeError as e:
+            raise HTTPException(409, str(e))
+        if summary["has_destroy"] and body.approve_destroy != core.DESTROY_APPROVAL_TOKEN:
+            raise HTTPException(409, {
+                "error": "destroy_approval_required",
+                "message": (f"this plan will DELETE or REPLACE {len(summary['destroyed'])} "
+                            f"resource(s); type '{core.DESTROY_APPROVAL_TOKEN}' to approve"),
+                "destroyed": summary["destroyed"],
+                "approval_token": core.DESTROY_APPROVAL_TOKEN,
+            })
     try:
         cmd = core.build_step_command(step, _last_config.get("profile", "cost-optimized"))
         run = runner.start(step, cmd)

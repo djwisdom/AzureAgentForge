@@ -108,6 +108,51 @@ def test_dangerous_steps_flagged():
 
 
 # ---------------------------------------------------------------------------
+# Destroy-aware apply gate — plan_has_destroy
+# ---------------------------------------------------------------------------
+
+def _plan(*action_lists):
+    """Build a minimal `terraform show -json` plan with the given action sets."""
+    return {"resource_changes": [
+        {"address": f"azurerm_thing.r{i}", "change": {"actions": acts}}
+        for i, acts in enumerate(action_lists)
+    ]}
+
+
+def test_plan_has_destroy_create_only():
+    has, addrs = core.plan_has_destroy(_plan(["create"], ["create"]))
+    assert has is False and addrs == []
+
+
+def test_plan_has_destroy_update_only():
+    has, addrs = core.plan_has_destroy(_plan(["update"], ["no-op"], ["read"]))
+    assert has is False and addrs == []
+
+
+def test_plan_has_destroy_pure_delete():
+    has, addrs = core.plan_has_destroy(_plan(["create"], ["delete"]))
+    assert has is True and addrs == ["azurerm_thing.r1"]
+
+
+@pytest.mark.parametrize("replace", [["delete", "create"], ["create", "delete"]])
+def test_plan_has_destroy_replace_pair(replace):
+    has, addrs = core.plan_has_destroy(_plan(["update"], replace))
+    assert has is True and addrs == ["azurerm_thing.r1"]
+
+
+def test_plan_has_destroy_collects_all_addresses():
+    has, addrs = core.plan_has_destroy(_plan(["delete"], ["create"], ["delete", "create"]))
+    assert has is True
+    assert addrs == ["azurerm_thing.r0", "azurerm_thing.r2"]
+
+
+def test_plan_has_destroy_tolerates_empty_and_malformed():
+    assert core.plan_has_destroy({}) == (False, [])
+    assert core.plan_has_destroy({"resource_changes": None}) == (False, [])
+    assert core.plan_has_destroy({"resource_changes": [{}]}) == (False, [])
+
+
+# ---------------------------------------------------------------------------
 # Runner — streaming, status, one-at-a-time
 # ---------------------------------------------------------------------------
 
@@ -210,3 +255,72 @@ def test_config_endpoint_preview(client):
     assert r.status_code == 200
     assert r.json()["written"] is False
     assert "subscription_id" in r.json()["preview"]
+
+
+# ---------------------------------------------------------------------------
+# API layer — destroy-aware apply gate (no terraform; plan inspection stubbed)
+# ---------------------------------------------------------------------------
+
+def _stub_runner_start(monkeypatch):
+    """Replace the real subprocess Runner.start with a no-op that records the step."""
+    started = {}
+    monkeypatch.setattr(forge_app.runner, "start",
+                        lambda step, cmd, **k: (started.setdefault("step", step),
+                                                core.StepRun(step=step))[1])
+    return started
+
+
+def test_apply_blocked_when_plan_destroys(client, monkeypatch):
+    forge_app._last_config.update({"profile": "cost-optimized", "environment": "dev"})
+    monkeypatch.setattr(core, "inspect_saved_plan",
+                        lambda *a, **k: {"has_destroy": True, "destroyed": ["azurerm_thing.r0"]})
+    # Env name is correct, but the destructive approval token is missing -> blocked.
+    r = client.post("/api/run", json={"step": "apply", "confirm": "dev"}, headers=_h())
+    assert r.status_code == 409
+    detail = r.json()["detail"]
+    assert detail["error"] == "destroy_approval_required"
+    assert "azurerm_thing.r0" in detail["destroyed"]
+    forge_app._last_config.clear()
+
+
+def test_apply_proceeds_when_plan_has_no_destroy(client, monkeypatch):
+    forge_app._last_config.update({"profile": "cost-optimized", "environment": "dev"})
+    monkeypatch.setattr(core, "inspect_saved_plan",
+                        lambda *a, **k: {"has_destroy": False, "destroyed": []})
+    started = _stub_runner_start(monkeypatch)
+    r = client.post("/api/run", json={"step": "apply", "confirm": "dev"}, headers=_h())
+    assert r.status_code == 200 and started["step"] == "apply"
+    forge_app._last_config.clear()
+
+
+def test_apply_proceeds_with_destroy_approval_token(client, monkeypatch):
+    forge_app._last_config.update({"profile": "cost-optimized", "environment": "dev"})
+    monkeypatch.setattr(core, "inspect_saved_plan",
+                        lambda *a, **k: {"has_destroy": True, "destroyed": ["azurerm_thing.r0"]})
+    started = _stub_runner_start(monkeypatch)
+    r = client.post("/api/run", json={
+        "step": "apply", "confirm": "dev",
+        "approve_destroy": core.DESTROY_APPROVAL_TOKEN}, headers=_h())
+    assert r.status_code == 200 and started["step"] == "apply"
+    forge_app._last_config.clear()
+
+
+def test_apply_still_requires_env_name_even_with_destroy_token(client, monkeypatch):
+    """The destroy approval is additive — it never replaces the env-name confirm."""
+    forge_app._last_config.update({"profile": "cost-optimized", "environment": "dev"})
+    monkeypatch.setattr(core, "inspect_saved_plan",
+                        lambda *a, **k: {"has_destroy": True, "destroyed": ["azurerm_thing.r0"]})
+    r = client.post("/api/run", json={
+        "step": "apply", "confirm": "wrong",
+        "approve_destroy": core.DESTROY_APPROVAL_TOKEN}, headers=_h())
+    assert r.status_code == 428  # env-name confirm fails first
+    forge_app._last_config.clear()
+
+
+def test_plan_summary_endpoint(client, monkeypatch):
+    forge_app._last_config.update({"profile": "cost-optimized", "environment": "dev"})
+    monkeypatch.setattr(core, "inspect_saved_plan",
+                        lambda *a, **k: {"has_destroy": True, "destroyed": ["azurerm_thing.r0"]})
+    r = client.get("/api/plan-summary", headers=_h())
+    assert r.status_code == 200 and r.json()["has_destroy"] is True
+    forge_app._last_config.clear()

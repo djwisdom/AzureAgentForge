@@ -77,6 +77,11 @@
   dialog { background: var(--panel); color: var(--text); border: 1px solid var(--border);
            border-radius: 12px; padding: 22px; max-width: 440px; }
   dialog::backdrop { background: rgba(0,0,0,.55); }
+  dialog.destroy { border: 2px solid var(--err); box-shadow: 0 0 0 4px rgba(248,81,73,.15); }
+  dialog.destroy h3 { color: var(--err); }
+  dialog.destroy pre { background: #0a0e14; border: 1px solid var(--err); border-radius: 8px;
+                       padding: 10px 12px; max-height: 180px; overflow-y: auto;
+                       font: 12px/1.5 var(--mono); color: #f0b8b4; white-space: pre-wrap; }
 </style>
 </head>
 <body>
@@ -188,6 +193,19 @@
   </div>
 </dialog>
 
+<dialog id="destroyDialog" class="destroy">
+  <h3 style="margin-top:0">⚠ Destructive apply — extra approval required</h3>
+  <p id="destroyText" style="font-size:14px"></p>
+  <p class="note" style="margin-bottom:4px">These resources will be deleted or replaced:</p>
+  <pre id="destroyList"></pre>
+  <p style="font-size:14px">Type <code id="destroyToken"></code> to approve this destructive apply.</p>
+  <input type="text" id="destroyInput" placeholder="approval token" autocomplete="off">
+  <div class="btns">
+    <button class="danger" id="destroyGo">Approve &amp; apply</button>
+    <button class="secondary" onclick="document.getElementById('destroyDialog').close()">Cancel</button>
+  </div>
+</dialog>
+
 <script>
 const TOKEN = new URLSearchParams(location.search).get('token') || '';
 const $ = id => document.getElementById(id);
@@ -199,9 +217,11 @@ async function api(path, opts = {}) {
     headers: { 'x-forge-token': TOKEN, 'content-type': 'application/json', ...(opts.headers||{}) },
   });
   if (!r.ok) {
-    let msg = r.statusText;
-    try { msg = (await r.json()).detail || msg; } catch {}
-    throw new Error(msg);
+    let msg = r.statusText, detail;
+    try { detail = (await r.json()).detail; if (typeof detail === 'string') msg = detail; } catch {}
+    const err = new Error(typeof detail === 'object' && detail ? (detail.message || msg) : msg);
+    if (detail && typeof detail === 'object') err.gate = detail;  // structured gate payload
+    throw err;
   }
   return r.json();
 }
@@ -273,14 +293,19 @@ async function writeConfig() {
   } catch (e) { $('configPreview').innerHTML = `<div class="note bad">${e.message}</div>`; }
 }
 
-async function run(step, confirm = '') {
+async function run(step, confirm = '', approve_destroy = '') {
   try {
-    await api('/api/run', { method: 'POST', body: JSON.stringify({ step, confirm }) });
+    await api('/api/run', { method: 'POST', body: JSON.stringify({ step, confirm, approve_destroy }) });
     setStatus('running', step + ' running…');
-  } catch (e) { logLine('[forge] ' + e.message, 'err'); }
+  } catch (e) {
+    // A destroy-aware apply gate returns a structured detail; surface the loud path.
+    const g = e.gate;
+    if (g && g.error === 'destroy_approval_required') { destroyGate(confirm, g); return; }
+    logLine('[forge] ' + e.message, 'err');
+  }
 }
 
-function confirmRun(step) {
+async function confirmRun(step) {
   $('confirmTitle').textContent = 'Confirm ' + step;
   $('confirmText').textContent = step === 'apply'
     ? 'Apply creates real, billable Azure resources from the saved plan. Type the environment name to continue.'
@@ -291,6 +316,20 @@ function confirmRun(step) {
     run(step, $('confirmInput').value.trim());
   };
   $('confirmDialog').showModal();
+}
+
+// Second, deliberately-louder gate when the saved plan deletes/replaces things.
+function destroyGate(confirm, gate) {
+  const list = (gate.destroyed || []).map(a => '  • ' + a).join('\n');
+  $('destroyList').textContent = list || '(resources to be destroyed)';
+  $('destroyText').innerHTML = gate.message.replace(/</g, '&lt;');
+  $('destroyToken').textContent = gate.approval_token;
+  $('destroyInput').value = '';
+  $('destroyGo').onclick = () => {
+    document.getElementById('destroyDialog').close();
+    run('apply', confirm, $('destroyInput').value.trim());
+  };
+  $('destroyDialog').showModal();
 }
 
 function setStatus(state, text) {

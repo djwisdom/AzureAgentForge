@@ -40,6 +40,12 @@ one:
 - Steps are a fixed allowlist (`init`, `validate`, `plan`, `apply`, …). The
   browser never passes commands, only step names.
 - `apply` and `destroy` require typed confirmation of the environment name.
+- `apply` is **destroy-aware**: the console inspects the saved plan
+  (`terraform show -json`) and, if it would delete or replace any resource,
+  blocks behind a second, distinct approval that lists the affected resources
+  and requires typing `approve-destroy`. Adds and in-place changes apply
+  normally. Apply always runs the saved plan only, so what you approved is
+  exactly what runs.
 - One step runs at a time; output is captured and streamed via SSE.
 
 ## State backend

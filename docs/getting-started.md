@@ -191,6 +191,28 @@ Registry, PostgreSQL Flexible Server, Container Apps environment, and (if
 enabled) a monitoring workspace. The apply takes roughly 15-20 minutes on a
 fresh subscription.
 
+> **Destroy-aware applies.** Adds and in-place changes apply normally. But a
+> plan that would *delete* or *replace* an existing resource is destructive,
+> and the Forge Console blocks it behind a second, explicit approval (the GUI
+> lists the affected resources and asks you to type `approve-destroy`, separate
+> from the environment-name confirmation). On the command line you get the same
+> safety by always reviewing `terraform plan` output before apply, or by saving
+> and inspecting a plan file:
+>
+> ```bash
+> terraform plan -out tfplan \
+>   -var-file=../../profiles/cost-optimized.tfvars -var-file=terraform.tfvars
+> # Any "destroy" / "replace" in the plan? Treat it as a separate decision.
+> terraform show -json tfplan | jq '[.resource_changes[]
+>   | select(.change.actions | index("delete")) | .address]'
+> terraform apply tfplan   # applies the saved plan only
+> ```
+>
+> If you deploy from your own CI/CD pipeline, mirror the gate there: run
+> `terraform plan -out tfplan`, fail-fast or require a manual approval when the
+> JSON above is non-empty, and apply the *saved* plan so what you reviewed is
+> exactly what runs. See [docs/security.md](security.md) for the rationale.
+
 This step provisions infrastructure. It does not build or push service images.
 Image builds, push, and service startup are v1.1, delivered by the CLI
 installer. See [ROADMAP.md](../ROADMAP.md).

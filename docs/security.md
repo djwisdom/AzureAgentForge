@@ -46,6 +46,27 @@ Key Vault network access differs between profiles:
 
 For a development or personal deployment, the public-endpoint-with-firewall approach is workable if you restrict it to known IPs. For anything handling real user data or secrets with production value, use the hardened profile or add the private endpoint manually.
 
+## Deploy-time safety: the destroy gate
+
+Creating and updating resources is routine. Deleting or replacing them is not —
+a replace can mean data loss (a recreated database, a regenerated key). So the
+apply path treats destructive plans differently from additive ones.
+
+The Forge Console parses the saved plan with `terraform show -json` and checks
+each `resource_changes[].change.actions` for `"delete"` — which catches pure
+deletes (`["delete"]`) and both replace orderings (`["delete","create"]`,
+`["create","delete"]`). If none are present, apply proceeds with the normal
+environment-name confirmation. If any are present, apply is blocked behind a
+second, explicit approval that lists exactly which resources would be destroyed
+or replaced and requires typing a distinct `approve-destroy` token. The check
+runs server-side against the saved plan, and apply only ever runs that saved
+plan — so what you approved is what executes.
+
+If you deploy from your own pipeline, reproduce the gate: `terraform plan -out
+tfplan`, then fail the run or require manual approval when the plan contains a
+delete, and apply the saved `tfplan`. See
+[getting-started.md](getting-started.md) for the exact `jq` filter.
+
 ## Before production
 
 Work through this before you take this outside a personal dev environment:
