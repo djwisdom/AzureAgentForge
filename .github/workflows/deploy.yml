@@ -1,0 +1,203 @@
+# Reference deploy pipeline — adopters wire this up against their own Azure
+# subscription. It is NOT run by this repo's own CI (which stays validate-only,
+# since the public repo holds no cloud credentials).
+#
+# What it does, and the one idea worth copying:
+#   plan → detect-destroy → apply, where the human-approval gate fires ONLY
+#   when the plan would delete or replace a resource. Routine adds and
+#   image-bump deploys apply unattended; anything destructive blocks on a
+#   GitHub Environment reviewer. The destroy verdict is computed by
+#   installer/detect_destroy.py, which reuses installer.core.plan_has_destroy —
+#   the exact same definition the Forge Console GUI uses, so both agree.
+#
+# Auth is OIDC (federated) — no long-lived secrets stored in GitHub. See
+# docs/deploy-pipeline.md for the one-time Azure + GitHub Environment setup.
+
+name: Deploy (reference)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment name"
+        type: choice
+        default: dev
+        options: [dev, staging, prod]
+      profile:
+        description: "Cost/security profile (-var-file)"
+        type: choice
+        default: cost-optimized
+        options: [cost-optimized, hardened]
+      location:
+        description: "Azure region (e.g. centralus, eastus)"
+        type: string
+        default: centralus
+
+permissions:
+  contents: read
+  id-token: write        # required for azure/login OIDC
+
+env:
+  TF_DIR: infrastructure/environments/dev
+  TF_IN_AUTOMATION: "1"
+  ARM_USE_OIDC: "true"
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+jobs:
+  # ── 1. Plan + classify ──────────────────────────────────────────────────────
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      has_destroy: ${{ steps.detect.outputs.has_destroy }}
+      destroyed: ${{ steps.detect.outputs.destroyed }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.5"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: terraform init
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ vars.TFSTATE_CONTAINER }}" \
+            -backend-config="key=${{ inputs.environment }}.terraform.tfstate" \
+            -backend-config="subscription_id=${{ vars.AZURE_SUBSCRIPTION_ID }}" \
+            -backend-config="tenant_id=${{ vars.AZURE_TENANT_ID }}" \
+            -backend-config="use_oidc=true"
+
+      - name: terraform plan
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform plan -input=false -lock-timeout=300s \
+            -var-file="../../profiles/${{ inputs.profile }}.tfvars" \
+            -var="subscription_id=${{ vars.AZURE_SUBSCRIPTION_ID }}" \
+            -var="environment=${{ inputs.environment }}" \
+            -var="location=${{ inputs.location }}" \
+            -out=tfplan
+
+      - name: detect destroy
+        id: detect
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform show -json tfplan > plan.json
+          python -m installer.detect_destroy plan.json
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+      - name: upload plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ inputs.environment }}
+          path: ${{ env.TF_DIR }}/tfplan
+          retention-days: 5
+          if-no-files-found: error
+
+  # ── 2. Human gate — ONLY reached when the plan is destructive ───────────────
+  # The `environment:` is what enforces approval: configure required reviewers
+  # on a GitHub Environment named `deploy-destroy` (see docs/deploy-pipeline.md).
+  # A non-destructive plan skips this job entirely and apply runs unattended.
+  gate:
+    needs: plan
+    if: needs.plan.outputs.has_destroy == 'true'
+    runs-on: ubuntu-latest
+    environment: deploy-destroy
+    steps:
+      - name: record approval
+        run: |
+          echo "Destructive plan approved by ${{ github.actor }}."
+          echo "Resources to be deleted/replaced:"
+          echo "${{ needs.plan.outputs.destroyed }}"
+
+  # ── 3. Apply ────────────────────────────────────────────────────────────────
+  # Runs when: the plan succeeded AND (it was non-destructive OR the gate was
+  # approved). `if: always()` lets it evaluate even though `gate` is skipped on
+  # non-destructive plans (a skipped need would otherwise skip apply too).
+  apply:
+    needs: [plan, gate]
+    if: >-
+      always() &&
+      needs.plan.result == 'success' &&
+      (needs.plan.outputs.has_destroy == 'false' || needs.gate.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.5"
+
+      - name: terraform init
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ vars.TFSTATE_CONTAINER }}" \
+            -backend-config="key=${{ inputs.environment }}.terraform.tfstate" \
+            -backend-config="subscription_id=${{ vars.AZURE_SUBSCRIPTION_ID }}" \
+            -backend-config="tenant_id=${{ vars.AZURE_TENANT_ID }}" \
+            -backend-config="use_oidc=true"
+
+      - name: download plan
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ inputs.environment }}
+          path: ${{ env.TF_DIR }}
+
+      # Apply the SAVED plan verbatim — never re-plans, so what was reviewed at
+      # the gate is exactly what is applied.
+      - name: terraform apply
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform apply -input=false -lock-timeout=300s tfplan
+
+  # ── 4. Smoke check ──────────────────────────────────────────────────────────
+  smoke:
+    needs: apply
+    if: needs.apply.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.5"
+      - name: terraform output
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ vars.TFSTATE_CONTAINER }}" \
+            -backend-config="key=${{ inputs.environment }}.terraform.tfstate" \
+            -backend-config="subscription_id=${{ vars.AZURE_SUBSCRIPTION_ID }}" \
+            -backend-config="tenant_id=${{ vars.AZURE_TENANT_ID }}" \
+            -backend-config="use_oidc=true"
+          terraform output -no-color || echo "(no outputs defined)"
+      # Adopters: add a real health probe here once your ingress is wired —
+      # e.g. curl the Container Apps FQDN /health, or `az containerapp show`.
