@@ -7,18 +7,20 @@
 
 # Governed memory — architecture reference
 
-![status](https://img.shields.io/badge/status-shipping%20%E2%80%94%20flag--gated%20off-orange)
+![status](https://img.shields.io/badge/status-shipped%20%E2%80%94%20flag--gated%20off-orange)
 
 > **Status — read first.** This document describes the governed-memory
-> architecture in enough depth to implement, and it is the model AzureAgentForge
-> is built toward. The governor service code now lands in this repository
-> **incrementally and flag-gated off** under
-> [`services/memory-governor/`](../../services/memory-governor/) — with every
-> flag off the platform ships basic memory (self-hosted Honcho + pgvector) and
-> behaves exactly as before. Components arrive phase by phase; where a "the
-> governor does X" sentence describes a part not yet ported, treat it as *the
-> design*. Where the design deliberately stops short, this doc says so (see
-> [§15](#15-whats-designed-but-not-built)).
+> architecture in enough depth to implement, and the implementing code is now in
+> this repository, sanitized and **flag-gated off**, under
+> [`services/memory-governor/`](../../services/memory-governor/) and
+> [`services/watchdog/`](../../services/watchdog/). With every flag off the
+> platform ships basic memory (self-hosted Honcho + pgvector) and behaves exactly
+> as before — the layer is safe to add to a running system because off = identical
+> to before. The admission pipeline, classifier, trust scoring, four-plane
+> planner, background loops, hybrid vector retrieval, and the self-improvement
+> watchdog are all ported and unit-tested; it has **not** been deployed or verified
+> end-to-end against a live database. The parts deliberately **not** built are
+> listed in [§15](#15-whats-designed-but-not-built).
 
 **Audience.** An engineer who wants to add a governance layer over an agent
 platform's memory — admission control, provenance, trust, retention, and a

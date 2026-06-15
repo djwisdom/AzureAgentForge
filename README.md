@@ -299,7 +299,7 @@ As of v1.1, AzureAgentForge includes:
 - Governance & blast-radius walkthrough with reproducible replay fixtures
 - Destroy-aware approval gate (Forge Console + reference CI/CD pipeline)
 - 14 golden orchestration replay fixtures (agent-behavior regression tests)
-- Governed-memory architecture reference (design reference; governor code not bundled)
+- Governed memory — governor service, retrieval planner, background loops, hybrid vector retrieval, and self-improvement watchdog (shipped, flag-gated off)
 - Multi-tenant architecture design and early scaffolding
 
 The current local quickstart brings up PostgreSQL and the model router. The full one-command local stack and full end-to-end Azure installer are planned for v1.2.
@@ -449,8 +449,8 @@ See [`docs/getting-started.md`](docs/getting-started.md) for the full Azure walk
 - ✅ Optional Telegram + Discord surfaces
 - ✅ Multi-tenant architecture designed + early scaffolding
 
-**Design references** *(architecture to build toward; code not bundled)*
-- 📐 Governed memory — four planes, six classes, computed trust, self-improvement loop ([`docs/design/memory-system.md`](docs/design/memory-system.md))
+**Governed memory** *(shipped, flag-gated off — code bundled + unit-tested in CI, not yet deployed end-to-end)*
+- 🧠 Governor service + four-plane retrieval planner + six memory classes + computed trust + admission control + background loops + hybrid pgvector retrieval + the self-improvement watchdog ([`services/memory-governor/`](services/memory-governor/), [`services/watchdog/`](services/watchdog/)). Every feature flag seeds OFF. Architecture + the explicitly-not-built long tail: [`docs/design/memory-system.md`](docs/design/memory-system.md).
 
 ### Shipped in v1.1
 
@@ -562,7 +562,7 @@ Multi-tenant support is designed and partially scaffolded.
 | [`docs/security.md`](docs/security.md) | Secrets, network posture, and pre-production checklist |
 | [`docs/why-azure.md`](docs/why-azure.md) | The case for building agents on Azure |
 | [`docs/agents.md`](docs/agents.md) | The 13-role model and how to add your own |
-| [`docs/design/memory-system.md`](docs/design/memory-system.md) | Governed-memory architecture reference (four planes, six classes, trust model, self-improvement loop) — design reference; governor code not bundled |
+| [`docs/design/memory-system.md`](docs/design/memory-system.md) | Governed-memory architecture (four planes, six classes, trust model, self-improvement loop) — shipped flag-gated off; code under [`services/memory-governor/`](services/memory-governor/) + [`services/watchdog/`](services/watchdog/) |
 | [`docs/deploy-pipeline.md`](docs/deploy-pipeline.md) | Reference GitHub Actions deploy pipeline with a destroy-aware approval gate (OIDC, no stored secrets) |
 
 ---

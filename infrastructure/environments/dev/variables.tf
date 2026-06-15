@@ -221,3 +221,16 @@ variable "cloudflared_enabled" {
   default     = false
 }
 
+# Governed memory
+variable "memory_governor_enabled" {
+  description = "Deploy the memory-governor service + sweeper/digest/watchdog jobs. Off by default; every behavior is additionally feature-flag-gated in-app."
+  type        = bool
+  default     = false
+}
+
+variable "memory_planner_agent_allowlist" {
+  description = "Comma-separated agent slugs the retrieval planner may inject for (canary). Empty = nobody, even with MEMORY_PLANNER_ENABLED on."
+  type        = string
+  default     = ""
+}
+

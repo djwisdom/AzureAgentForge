@@ -149,6 +149,11 @@ module "container_apps" {
   # Ingress: Cloudflared tunnel (hardened) or ACA managed ingress (cost-optimized)
   cloudflared_enabled = var.cloudflared_enabled
 
+  # Governed memory (memory-governor + sweeper/digest/watchdog jobs). Off by
+  # default; every behavior is additionally feature-flag-gated in-app.
+  memory_governor_enabled        = var.memory_governor_enabled
+  memory_planner_agent_allowlist = var.memory_planner_agent_allowlist
+
 }
 
 # Monitoring Module

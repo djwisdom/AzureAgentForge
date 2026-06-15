@@ -221,13 +221,14 @@ subscription and credentials are not bundled here.
 | `docker-compose.yml` (local dev stack) | proven | Local working slice (postgres + model-router); full stack via `--profile full` |
 | Cost profiles (`cost-optimized`, `hardened`) | proven | In use; repo CI plans clean for both |
 | Multi-tenancy (schema-per-tenant, RLS, per-tenant routing) | design target | ~20-30% implemented; not yet deployed; see [`../roadmap/multi-tenant/`](../roadmap/multi-tenant/) |
-| Governed memory (planes/classes/trust/self-improvement loop) | design reference | Documented in [`design/memory-system.md`](design/memory-system.md); governor service not bundled in this repo |
+| Governed memory (planes/classes/trust/self-improvement loop) | shipped (flag-gated off) | Governor + retrieval planner + background loops + hybrid vector retrieval + self-improvement watchdog ported under [`../services/memory-governor/`](../services/memory-governor/) and [`../services/watchdog/`](../services/watchdog/); ~150 offline tests in CI; every flag seeds OFF (ship-dark). Long-tail items (reflection pass, inspector UI, in-channel controls, contradiction auto-resolve) remain design-only — see [`design/memory-system.md`](design/memory-system.md) §15 |
 | Reference deploy pipeline (destroy-aware approval gate) | reference | [`deploy-pipeline.md`](deploy-pipeline.md) + `.github/workflows/deploy.yml`; adopters wire to their own subscription |
 
 **Status vocabulary:**
 - `proven` — deployed and running in the maintainer's production Azure environment. This repository is the sanitized version; standing up your own instance takes manual setup (subscription, IAM/auth, building and deploying the OSS components, secret seeding), automated by the v1.1 CLI installer.
 - `design target` — design is substantially complete; implementation is partial or a scaffold; not yet deployed.
 - `design reference` — a complete, implementable architecture is documented here, but the implementing code is intentionally not bundled in this repository.
+- `shipped (flag-gated off)` — the implementing code is bundled, sanitized, and unit-tested in CI, but ships disabled (every feature flag seeds OFF) and has not been deployed or verified end-to-end against a live database. An honest middle ground between `design reference` and `proven`.
 - `reference` — a ready-to-adapt template (e.g. a workflow) that adopters wire to their own subscription; not run by this repo's CI.
 
 For the multi-tenancy roadmap, see [`../roadmap/multi-tenant/README.md`](../roadmap/multi-tenant/README.md).

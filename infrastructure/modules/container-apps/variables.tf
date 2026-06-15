@@ -371,3 +371,63 @@ variable "cloudflared_enabled" {
   description = "Run the Cloudflared tunnel container for ingress (hardened). When false, use Azure Container Apps managed ingress."
   default     = false
 }
+
+# ── Governed memory (memory-governor + watchdog) ──────────────────────────────
+# All gated OFF by default. Every behavior is additionally feature-flag-gated
+# in-app (the migrations seed every flag false), so deploying this stack is a
+# no-op until an operator both flips var.memory_governor_enabled and turns flags
+# on per environment.
+
+variable "memory_governor_enabled" {
+  type        = bool
+  description = "Deploy the memory-governor service + sweeper/digest/watchdog jobs. Off by default."
+  default     = false
+}
+
+variable "memory_governor_image_tag" {
+  type        = string
+  description = "Image tag for the memory-governor container."
+  default     = "latest"
+}
+
+variable "watchdog_image_tag" {
+  type        = string
+  description = "Image tag for the watchdog container."
+  default     = "latest"
+}
+
+variable "memory_planner_agent_allowlist" {
+  type        = string
+  description = "Comma-separated agent slugs the retrieval planner may inject for (canary). Empty = nobody, even with MEMORY_PLANNER_ENABLED on."
+  default     = ""
+}
+
+variable "memory_classifier_daily_budget_usd" {
+  type        = string
+  description = "Daily budget cap (USD) for the governor's economy classification tier."
+  default     = "1.00"
+}
+
+variable "memory_sweeper_cron" {
+  type        = string
+  description = "Cron expression for the nightly TTL sweeper job."
+  default     = "0 4 * * *"
+}
+
+variable "watchdog_cron" {
+  type        = string
+  description = "Cron expression for the self-improvement-loop watchdog job."
+  default     = "*/10 * * * *"
+}
+
+variable "memory_digest_webhook_url" {
+  type        = string
+  description = "Chat webhook URL for the daily memory digest. Empty = the digest job is not created."
+  default     = ""
+}
+
+variable "memory_digest_cron" {
+  type        = string
+  description = "Cron expression for the daily memory digest poster job."
+  default     = "0 13 * * *"
+}

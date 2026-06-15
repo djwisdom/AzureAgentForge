@@ -33,6 +33,20 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-aaf}:${POSTGRES_PASSWORD:-localdev}@postgres:5432/${POSTGRES_DB:-aaf}
 
+  # Governed-memory sidecar. Every behavior is flag-gated OFF (the migrations
+  # under infrastructure/migrations/ seed every flag false), so with a fresh DB
+  # this is an idle app and /admit returns "disabled" until you flip a flag.
+  memory-governor:
+    profiles: ["full"]
+    build: ./services/memory-governor
+    depends_on: [postgres, model-router, honcho]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-aaf}:${POSTGRES_PASSWORD:-localdev}@postgres:5432/${POSTGRES_DB:-aaf}
+      ROUTER_BASE_URL: http://model-router:8080/v1
+      HONCHO_BASE_URL: http://honcho:8000
+      GOVERNOR_API_KEY: ${GOVERNOR_API_KEY:-localdev}
+    ports: ["8090:8090"]
+
   paperclip:
     profiles: ["full"]
     build: ./services/paperclip
