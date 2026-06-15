@@ -73,7 +73,7 @@ New in v1.1 (since the v1.0 open-source release):
 - **Governance &amp; blast-radius walkthrough** — a destructive request traced through every control that refuses it, backed by reproducible replay fixtures and the demos above.
 - **Destroy-aware approval gate** — in the Forge Console *and* as a reference CI/CD pipeline ([`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)): routine plans apply unattended; any delete/replace blocks on human approval. OIDC auth, no stored secrets ([setup](docs/deploy-pipeline.md)).
 - **Forge Console** (`./forge`) — a local web installer that runs preflight checks and a live-streamed `init → validate → plan → apply`, with typed confirmations for `apply`/`destroy`.
-- **Governed-memory architecture reference** — the four-plane / six-class memory model with computed trust, contradiction detection, and a self-improvement loop, documented to build toward ([`docs/design/memory-system.md`](docs/design/memory-system.md)).
+- **Governed memory — now shipped (flag-gated off)** — the four-plane / six-class memory model with admission control, computed trust, contradiction detection, hybrid pgvector retrieval, and a self-improvement loop, ported as real code under [`services/memory-governor/`](services/memory-governor/) + [`services/watchdog/`](services/watchdog/) (~150 offline tests in CI). Every flag seeds **off**, so it's inert until you enable it. Architecture + the explicitly-not-built long tail: [`docs/design/memory-system.md`](docs/design/memory-system.md).
 - **14 golden orchestration replay fixtures** — regression tests that pin agent routing and refusal behavior ([`tests/replay/`](tests/replay/)).
 - **Measured Azure costs** — figures validated against real bills (~$83/mo observed on cost-optimized), not just models ([`docs/cost.md`](docs/cost.md)).
 
@@ -87,6 +87,7 @@ Think of AzureAgentForge as a small operations center for agent teams.
 - **Hermes** is where the agents actually do the work.
 - **OpenClaw** support is planned as an additional agent execution option.
 - **Honcho** is the memory layer that keeps context private.
+- **Memory Governor** is the optional governance layer over that memory — it decides what's worth remembering, how much to trust it, and what to forget.
 - **Model Router** is the spending guardrail.
 - **Azure AI Foundry** is the preferred model gateway.
 - **Azure** is the secure building everything runs inside.
@@ -183,6 +184,12 @@ AzureAgentForge gives you a practical Azure-native base so you can focus on what
 ### Memory that stays in your network
 
 Honcho stores per-session and per-user memory in PostgreSQL with pgvector. Agent memory stays inside your Azure network instead of disappearing into someone else's hosted black box.
+
+### Governed memory: admission, trust, and a self-improvement loop
+
+Letting agents write unbounded rows into a vector store is how memory rots. The optional **Memory Governor** (`services/memory-governor/`) sits between the agents and the store as a write-time and read-time choke point: a classifier sorts each observation into one of six classes, an admission pipeline decides whether it's worth persisting (and dedupes near-duplicates), trust is *computed* from provenance + verification + usage rather than stored as a single rotting number, and a four-plane retrieval planner injects only what an agent is allowed to see, ranked by a hybrid of pgvector similarity and trigram match. Background loops sweep expired memory, flag contradictions for review (never auto-resolving — the operator finalizes), and a watchdog turns recurring failures into durable lessons the planner re-injects into the agent that keeps hitting them.
+
+It ships **disabled** — every feature flag seeds off, so adding it to a running system changes nothing until you turn a flag on. See [enabling it](docs/design/memory-system.md#17-enabling-governed-memory) and the [architecture reference](docs/design/memory-system.md).
 
 ### Model access through Azure AI Foundry
 

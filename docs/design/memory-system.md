@@ -675,3 +675,63 @@ Grounded in the absence of implementing code, not any doc's aspiration:
 - **Govern, don't replace.** The layer adds columns to the store's table and owns
   exactly one new table; the store keeps embedding ownership and its native
   context path. That keeps the blast radius small and the upgrade path clean.
+
+---
+
+## 17. Enabling governed memory
+
+The code is in the repo (`services/memory-governor/`, `services/watchdog/`,
+`infrastructure/migrations/`) but ships inert. Bringing it online is two
+independent steps — *deploy* the service, then *enable* behaviors per flag —
+each reversible and safe to do incrementally.
+
+**1. Apply the migrations.** Against the Postgres that backs Honcho, in filename
+order (they are idempotent):
+
+```bash
+for f in infrastructure/migrations/*.sql; do psql "$DATABASE_URL" -f "$f"; done
+# then, deliberately, the manual backfill that validates the NOT VALID constraints:
+psql "$DATABASE_URL" -f infrastructure/migrations/manual/0003_memory_backfill.sql
+```
+
+This creates the `agent_events` spine, the `feature_flags` registry (every flag
+seeded **off**), the memory-class columns + `session_memory` table, and
+`pg_trgm`. With the flags off nothing reads or writes them, so this step alone is
+a no-op behaviorally. See [`infrastructure/migrations/README.md`](../../infrastructure/migrations/README.md)
+for the managed-Postgres `pg_trgm` note.
+
+**2. Deploy the service.** Locally, `docker compose --profile full up` starts a
+`memory-governor` container alongside Postgres + the model-router. On Azure, set
+`memory_governor_enabled = true` (the module also creates the sweeper, digest,
+and watchdog jobs). Seed the shared key the callers attach as `X-Governor-Key`:
+
+```bash
+az keyvault secret set --vault-name <your-key-vault> \
+  --name memory-governor-api-key --value "$(openssl rand -hex 32)"
+```
+
+A deployed-but-flag-off governor is an idle, sidecar-class app; `/admit` returns
+`disabled` and the platform behaves exactly as before.
+
+**3. Enable behaviors per flag.** Flip flags in the `feature_flags` table, in
+canary order, watching `/digest` and `/memory/audit` between each:
+
+```sql
+UPDATE feature_flags SET enabled = true, updated_by = 'operator'
+ WHERE name = 'AGENT_EVENTS_ENABLED';      -- the event spine + watchdog gate
+-- then MEMORY_CLASSES_ENABLED (admission), MEMORY_SESSION_SEPARATION_ENABLED,
+-- MEMORY_PLANNER_ENABLED, MEMORY_TTL_SWEEPER_ENABLED, and last the long-tail
+-- flags (MEMORY_VECTOR_RETRIEVAL_ENABLED, MEMORY_CONTRADICTION_SWEEP_ENABLED,
+-- SKILL_AUTOGEN_ENABLED).
+```
+
+**4. Canary retrieval injection.** Even with `MEMORY_PLANNER_ENABLED` on,
+`/plan-retrieval` returns `enabled:false` for any agent not in the
+`PLANNER_AGENT_ALLOWLIST` (the `memory_planner_agent_allowlist` Terraform
+variable). Add agent slugs one at a time so a bad injection is contained to one
+agent. Vector retrieval additionally requires an embedding key on the router
+sidecar (`EMBEDDING_API_KEY`); without it, Plane C stays trigram-only.
+
+Every step is reversible: set a flag back to `false` and the corresponding
+behavior stops on the next flag-cache cycle (≤60s); set `memory_governor_enabled
+= false` to remove the service entirely.

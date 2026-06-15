@@ -107,12 +107,27 @@ Honcho stores per-session and per-user memories for agents. It sits in front of 
 
 Both Honcho and PostgreSQL are private; no agent memory leaves the VNet.
 
-> **Beyond basic memory.** The shipped stack uses Honcho's native session/user
-> memory directly. A fuller **governed-memory** model — admission control,
-> six memory classes, a four-plane retrieval planner, computed trust, contradiction
-> detection, and a self-improvement loop — is documented as a design reference in
-> [`design/memory-system.md`](design/memory-system.md). That governor service is
-> *not* bundled in this repository; the doc is the architecture to build toward.
+> **Beyond basic memory.** The base stack uses Honcho's native session/user
+> memory directly. The optional **governed-memory** layer below adds admission
+> control, six memory classes, computed trust, a four-plane retrieval planner,
+> contradiction detection, and a self-improvement loop on top of it. It is bundled
+> in this repo (`services/memory-governor/` + `services/watchdog/`) but ships
+> **flag-gated off** — see [`design/memory-system.md`](design/memory-system.md)
+> for the full model and the explicitly-not-built long tail.
+
+### Memory Governor (optional, flag-gated off)
+
+**Role:** governance layer over agent memory — admission control, trust scoring, retrieval planning.  
+**Azure resources:** `azurerm_container_app` (`memory-governor`, with a model-router sidecar) + scheduled `azurerm_container_app_job`s (TTL sweeper, digest poster). Gated by `memory_governor_enabled` (default `false`).
+
+A FastAPI sidecar between the agents and Honcho's `documents` table (plus one `session_memory` table it owns). `POST /admit` is the write-time choke point: classify → validate scope → check the writer's authority → dedupe → persist. `POST /plan-retrieval` is the read-time planner: it assembles a four-plane package (always-on, governed retrieval, session, plus failure-lesson injection), filtered by per-agent read authority and ranked by a hybrid pgvector + trigram score. Background loops (a second-stage annotator, a task-scope-close watcher, a TTL sweeper, and a contradiction sweep) run inside the app, each gated by its own flag and idle when off. With every flag off the service is an idle, sidecar-class app and `/admit` returns `disabled`.
+
+### Watchdog (optional, flag-gated off)
+
+**Role:** the self-improvement loop's write side.  
+**Azure resource:** `azurerm_container_app_job` (`watchdog`), scheduled ~every 10 minutes. Gated by `memory_governor_enabled` + the `AGENT_EVENTS_ENABLED` flag.
+
+A pure detector library scans recent run results and `agent_events` for failure signatures (repeated adapter failures, stuck wakes, budget anomalies, fabrication-guard trips, standby-site sync staleness), dedupes them, and files an issue per fresh finding. When a finding names a specific agent it also writes a peer-scoped `durable_fact` lesson through the governor, which the planner re-injects into that agent — so agents stop relearning the same failure. It refuses to run unless `AGENT_EVENTS_ENABLED` is on.
 
 ### PostgreSQL Flexible Server
 
@@ -179,8 +194,20 @@ Two chat surfaces are off by default and enabled with a single Terraform variabl
 |---|---|---|
 | `telegram_enabled` | `false` | Telegram bridge container app |
 | `discord_enabled` | `false` | Discord bridge container app |
+| `memory_governor_enabled` | `false` | Memory Governor service + sweeper/digest/watchdog jobs |
 
 `cloudflared_enabled` follows the same pattern for ingress mode.
+
+The governed-memory layer has **two** gating tiers. `memory_governor_enabled`
+(above) controls whether the service is *deployed*; on top of that, every
+governed *behavior* is gated by a row in the `feature_flags` database table —
+all seeded `false` by the migrations under `infrastructure/migrations/`
+(`AGENT_EVENTS_ENABLED`, `MEMORY_CLASSES_ENABLED`, `MEMORY_PLANNER_ENABLED`,
+`MEMORY_SESSION_SEPARATION_ENABLED`, `MEMORY_TTL_SWEEPER_ENABLED`,
+`MEMORY_VECTOR_RETRIEVAL_ENABLED`, `MEMORY_CONTRADICTION_SWEEP_ENABLED`,
+`SKILL_AUTOGEN_ENABLED`). So a deployed governor is still inert until an operator
+flips flags per environment. See
+[`design/memory-system.md` §17](design/memory-system.md#17-enabling-governed-memory).
 
 ### Cost profiles
 
