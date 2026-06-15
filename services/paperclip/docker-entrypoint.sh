@@ -188,7 +188,7 @@ mkdir -p "${HERMES_CONFIG_DIR}"
 # is the bare scheme://host with NO "/v1" suffix — including it would yield
 # "/v1/v1/messages" 404s (the documented double-/v1 bug, see Hermes
 # run_agent.py:2664). The matching server route is "POST /v1/messages" in
-# apps/router/main.py. OPENAI_BASE_URL is preserved for the legacy
+# services/model-router/main.py. OPENAI_BASE_URL is preserved for the legacy
 # /chat/completions path; HERMES_BASE_URL overrides anthropic_messages base.
 HERMES_BASE_URL_DEFAULT="${HERMES_BASE_URL:-${OPENAI_BASE_URL:-http://ca-agent-runtime/v1}}"
 HERMES_ANTHROPIC_BASE_URL="${HERMES_ANTHROPIC_BASE_URL:-$(echo "${HERMES_BASE_URL_DEFAULT}" | sed 's|/v1/*$||')}"
@@ -203,7 +203,7 @@ cat > "${HERMES_CONFIG}" <<HERMES_EOF
 # This is the ONLY path that lets Hermes' _anthropic_prompt_cache_policy()
 # inject cache_control markers — otherwise every turn re-bills the full
 # ~10k-token system prefix even though the router would happily pass cache
-# headers through. The matching /v1/messages route is in apps/router/main.py.
+# headers through. The matching /v1/messages route is in services/model-router/main.py.
 #
 # prompt_caching.cache_ttl: 1h asks Hermes to use the
 # "extended-cache-ttl-2025-04-11" Anthropic beta (1-hour TTL on the cache

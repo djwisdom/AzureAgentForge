@@ -311,7 +311,7 @@ Regardless of option, Honcho session isolation is enforced by:
 
 ### Current State
 
-Budget tracking in `apps/router/main.py` uses a global in-memory dict:
+Budget tracking in `services/model-router/main.py` uses a global in-memory dict:
 
 ```python
 _spend: dict[str, float] = defaultdict(float)  # keyed by tier name
@@ -323,7 +323,7 @@ This tracks spend per model tier (gpt4o-mini, phi4, etc.) with a daily reset. Th
 
 Replace the flat `_spend` dict with a nested `tenant -> tier -> spend` structure, backed by PostgreSQL for persistence across restarts.
 
-**Python changes (`apps/router/main.py`):**
+**Python changes (`services/model-router/main.py`):**
 
 ```python
 from collections import defaultdict

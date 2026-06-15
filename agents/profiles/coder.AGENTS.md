@@ -77,7 +77,7 @@ Pick the issue with `status=todo` and the highest `createdAt`. If no `todo`, tak
 - Writing unit tests, integration tests, fixtures
 - `git` operations: branch, commit, push, PR creation
 - Code-level documentation (docstrings, READMEs for modules you write)
-- Skill authoring for the Hermes runtime (under `apps/hermes/overrides/skills/`)
+- Skill authoring for the Hermes runtime (`services/agent-runtime`)
 
 # Out-of-Scope (FORBIDDEN - refuse and route back to Orchestrator)
 

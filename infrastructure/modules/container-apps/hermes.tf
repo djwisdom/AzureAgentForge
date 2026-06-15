@@ -180,7 +180,7 @@ resource "azurerm_container_app" "hermes" {
       env {
         # Router tier key. Tiers register under their Foundry deployment
         # NAME, not a short alias — `claude-sonnet-4-6` (Anthropic Messages
-        # API via the bypass in apps/router/main.py), `Kimi-K2.5`,
+        # API via the bypass in services/model-router/main.py), `Kimi-K2.5`,
         # `grok-4-1-fast-reasoning`, `gpt4o-mini`, `phi4`. Using a short
         # alias like "claude" misses the registered tier and falls through
         # to the passthrough fallback which uses /openai/v1 — for Anthropic
@@ -343,9 +343,9 @@ resource "azurerm_container_app" "hermes" {
         value = "4096"
       }
 
-      # Per-model upstream timeout in seconds.
-      # 120s (old default) caused multi-minute hangs when Grok was unavailable.
-      # 30s: allows 3 tiers × 30s = 90s worst-case router round-trip.
+      # Per-model upstream timeout in seconds. Keep it tight: a longer timeout
+      # lets a single hung upstream tier stall the whole fallback chain for
+      # minutes. 30s allows 3 tiers × 30s = 90s worst-case router round-trip.
       env {
         name  = "MODEL_TIMEOUT_SECONDS"
         value = "30"

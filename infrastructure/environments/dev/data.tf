@@ -1,11 +1,6 @@
 # Data sources for Key Vault secrets
 # Naming convention: platform-<platform>-<purpose>
 
-data "azurerm_key_vault_secret" "moonshot" {
-  name         = "platform-kimi-k25-key"
-  key_vault_id = module.keyvault.id
-}
-
 data "azurerm_key_vault_secret" "auth_password" {
   name         = "platform-azureagentforge-auth-password"
   key_vault_id = module.keyvault.id

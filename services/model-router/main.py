@@ -428,8 +428,8 @@ def select_tier(body: dict) -> str:
 
     # Explicit model that isn't a registered tier — fall through to passthrough
     # to Foundry. Persona fallback below would otherwise hardcode to gpt4o-mini
-    # and silently downgrade the request (the bug that hid the missing
-    # CLAUDE/KIMI/GROK tier registrations for ~5 days).
+    # and silently downgrade an explicit model request to a tier the caller
+    # never asked for.
     if not tier or tier == "auto":
         raw_model = body.get("model", "").strip()
         if raw_model:
@@ -486,11 +486,10 @@ def _build_completion_kwargs(tier: str, body: dict, *, stream: bool) -> dict[str
 
     # Temperature handling:
     # gpt-5 family (gpt-5-nano, gpt-5-codex, gpt-5.4-nano etc.) only accepts
-    # temperature=1 — LiteLLM raises UnsupportedParamsError on any other
-    # value. Pre-this-fix the router defaulted to 0.7, so every gpt-5-* call
-    # failed and fail-soft cascaded to gpt-4o-mini, silently downgrading
-    # Planner/Business/QA/Coach/Psychology/Curator/Security/Infrastructure to gpt-4o-mini
-    # for ~weeks.
+    # temperature=1 — LiteLLM raises UnsupportedParamsError on any other value.
+    # If the router defaults temperature to 0.7 for these, every gpt-5-* call
+    # fails and fail-soft cascades to gpt4o-mini, silently downgrading any agent
+    # on a gpt-5 tier. So we pick the default temperature per model family below.
     #
     # Use the caller's temperature if provided; otherwise pick a sane default
     # per model family. (gpt-5.1 allows non-1 temperature only when
