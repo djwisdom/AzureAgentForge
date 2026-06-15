@@ -35,14 +35,31 @@ async def require_key(x_governor_key: str | None = Header(default=None)) -> None
 
 @app.on_event("startup")
 async def _startup() -> None:
-    # The background loops (annotator, scope-watcher, TTL sweeper, contradiction
-    # sweep) and the skill miner are spawned here in later phases. Each is
-    # flag-gated internally, so spawning them is a no-op until its flag is on.
-    pass
+    import asyncio
+
+    from . import annotator, contradiction, scope_watcher
+
+    # Always-spawn, gate-inside: each loop checks its own feature flag every
+    # cycle and idles when off, so spawning them is a no-op until a flag is on.
+    # The second-stage classifier loop for deriver-emitted docs.
+    app.state.annotator_task = asyncio.create_task(annotator.run_forever())
+    # Task-scope lifecycle watcher. Idle unless PAPERCLIP_BASE_URL + the
+    # automation JWT secret are configured.
+    app.state.scope_watcher_task = asyncio.create_task(scope_watcher.run_forever())
+    # Contradiction detection sweep (MEMORY_CONTRADICTION_SWEEP_ENABLED); idles
+    # otherwise. Uses the in-pod router for the LLM judge.
+    app.state.contradiction_task = asyncio.create_task(contradiction.run_forever())
+    # The TTL sweeper runs as a separate scheduled job (python -m
+    # governor.sweeper), not as an in-process loop. The skill miner is spawned
+    # here in a later phase.
 
 
 @app.on_event("shutdown")
 async def _shutdown() -> None:
+    for attr in ("annotator_task", "scope_watcher_task", "contradiction_task"):
+        task = getattr(app.state, attr, None)
+        if task:
+            task.cancel()
     await db.close()
 
 
