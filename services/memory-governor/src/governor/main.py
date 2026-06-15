@@ -19,7 +19,7 @@ from typing import Any
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
-from . import config, db
+from . import config, db, digest
 from .memory import admission, planner
 
 logging.basicConfig(level=logging.INFO, format="%(name)s %(levelname)s %(message)s")
@@ -37,7 +37,7 @@ async def require_key(x_governor_key: str | None = Header(default=None)) -> None
 async def _startup() -> None:
     import asyncio
 
-    from . import annotator, contradiction, scope_watcher
+    from . import annotator, contradiction, scope_watcher, skill_miner
 
     # Always-spawn, gate-inside: each loop checks its own feature flag every
     # cycle and idles when off, so spawning them is a no-op until a flag is on.
@@ -49,14 +49,16 @@ async def _startup() -> None:
     # Contradiction detection sweep (MEMORY_CONTRADICTION_SWEEP_ENABLED); idles
     # otherwise. Uses the in-pod router for the LLM judge.
     app.state.contradiction_task = asyncio.create_task(contradiction.run_forever())
+    # Skill-autogen miner (SKILL_AUTOGEN_ENABLED); idles otherwise.
+    app.state.skill_miner_task = asyncio.create_task(skill_miner.run_forever())
     # The TTL sweeper runs as a separate scheduled job (python -m
-    # governor.sweeper), not as an in-process loop. The skill miner is spawned
-    # here in a later phase.
+    # governor.sweeper), not as an in-process loop.
 
 
 @app.on_event("shutdown")
 async def _shutdown() -> None:
-    for attr in ("annotator_task", "scope_watcher_task", "contradiction_task"):
+    for attr in ("annotator_task", "scope_watcher_task", "contradiction_task",
+                 "skill_miner_task"):
         task = getattr(app.state, attr, None)
         if task:
             task.cancel()
@@ -388,7 +390,129 @@ async def session_memory_close(workspace_name: str, session_id: str) -> dict[str
 
 
 # ---------------------------------------------------------------------------
-# /digest and /skill-candidates surfaces are added in a later phase alongside
-# the digest renderer and the skill-autogen miner (migration 0008).
-# TODO(phase 5): restore the daily memory digest + skill-candidate review API.
+# Daily memory digest — operator-curation flywheel
 # ---------------------------------------------------------------------------
+
+
+@app.get("/digest", dependencies=[Depends(require_key)])
+async def memory_digest(window_hours: int = 24) -> dict[str, Any]:
+    window_hours = max(1, min(int(window_hours), 168))
+    p = await db.pool()
+    rows = await p.fetch(
+        """SELECT event_type, payload->>'memory_class' AS mc, count(*) AS n
+           FROM agent_events
+           WHERE ts > now() - make_interval(hours => $1)
+             AND event_type LIKE 'memory_%'
+           GROUP BY 1, 2""",
+        window_hours,
+    )
+    writes_by_class: dict[str, int] = {}
+    ev: dict[str, int] = {}
+    for r in rows:
+        et = r["event_type"]
+        ev[et] = ev.get(et, 0) + r["n"]
+        if et == "memory_write" and r["mc"]:
+            writes_by_class[r["mc"]] = writes_by_class.get(r["mc"], 0) + r["n"]
+
+    q = await p.fetchrow(
+        """SELECT
+             count(*) FILTER (
+               WHERE (internal_metadata->>'pin_candidate')::boolean = true
+                 AND verification_state <> 'confirmed' AND deleted_at IS NULL
+             ) AS pin_candidates,
+             count(*) FILTER (
+               WHERE verification_state = 'needs_review' AND deleted_at IS NULL
+             ) AS needs_review
+           FROM documents"""
+    )
+
+    stats: dict[str, Any] = {
+        "window_hours": window_hours,
+        "writes_by_class": writes_by_class,
+        "classified": ev.get("memory_classify", 0),
+        "confirmed": ev.get("memory_confirm", 0),
+        "disputed": ev.get("memory_dispute", 0),
+        "expired": ev.get("memory_expire", 0),
+        "promoted": ev.get("memory_promote", 0),
+        "pin_candidates_pending": (q["pin_candidates"] if q else 0) or 0,
+        "needs_review": (q["needs_review"] if q else 0) or 0,
+    }
+    stats["text"] = digest.format_digest(stats)
+    return stats
+
+
+# ---------------------------------------------------------------------------
+# Skill candidates (automatic repetition detection -> skill autogen, 0008)
+# The miner proposes; the operator/curator disposes. The skill-curator job
+# lists status='approved' candidates, writes them to the shared skills dir,
+# then POSTs action='materialized'. Nothing is auto-injected into an agent.
+# ---------------------------------------------------------------------------
+
+
+@app.get("/skill-candidates", dependencies=[Depends(require_key)])
+async def skill_candidates_list(
+    status: str = "pending_review", agent_slug: str | None = None, limit: int = 50
+) -> list[dict[str, Any]]:
+    clauses = ["status = $1"]
+    args: list[Any] = [status]
+    if agent_slug:
+        args.append(agent_slug)
+        clauses.append(f"agent_slug = ${len(args)}")
+    p = await db.pool()
+    rows = await p.fetch(
+        f"""SELECT id, agent_slug, skill_name, left(skill_body, 280) AS body_preview,
+                   recurrence, source_doc_ids, status, created_at, reviewed_at
+            FROM skill_candidates
+            WHERE {' AND '.join(clauses)}
+            ORDER BY recurrence DESC, created_at DESC
+            LIMIT {max(1, min(int(limit), 200))}""",
+        *args,
+    )
+    return [dict(r) for r in rows]
+
+
+@app.get("/skill-candidates/{candidate_id}", dependencies=[Depends(require_key)])
+async def skill_candidate_show(candidate_id: str) -> dict[str, Any]:
+    p = await db.pool()
+    row = await p.fetchrow("SELECT * FROM skill_candidates WHERE id = $1", candidate_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="skill candidate not found")
+    return dict(row)
+
+
+SKILL_CANDIDATE_ACTIONS = {"approve": "approved", "reject": "rejected", "materialized": "materialized"}
+
+
+class SkillCandidateActionBody(BaseModel):
+    action: str
+    actor: str = "operator"
+    note: str | None = None
+
+
+@app.post("/skill-candidates/{candidate_id}/action", dependencies=[Depends(require_key)])
+async def skill_candidate_action(candidate_id: str, body: SkillCandidateActionBody) -> dict[str, Any]:
+    new_status = SKILL_CANDIDATE_ACTIONS.get(body.action)
+    if not new_status:
+        raise HTTPException(status_code=400, detail=f"unknown action {body.action!r}")
+    p = await db.pool()
+    row = await p.fetchrow(
+        """UPDATE skill_candidates
+           SET status = $2, reviewed_at = now(),
+               review_note = COALESCE($3, review_note)
+           WHERE id = $1
+           RETURNING id, agent_slug, skill_name""",
+        candidate_id, new_status, body.note,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="skill candidate not found")
+    await db.emit_event(
+        "skill_candidate_reviewed",
+        body.actor,
+        {
+            "candidate_id": candidate_id,
+            "action": body.action,
+            "agent": row["agent_slug"],
+            "skill_name": row["skill_name"],
+        },
+    )
+    return {"candidate_id": candidate_id, "action": body.action, "status": new_status}

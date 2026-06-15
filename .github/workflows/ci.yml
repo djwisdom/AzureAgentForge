@@ -68,5 +68,7 @@ jobs:
         run: |
           pip install -r services/memory-governor/requirements.txt pytest
           pytest -q tests/memory-governor
+      - name: watchdog
+        run: pytest -q services/watchdog/tests
       - name: compileall
         run: python -m compileall services installer
