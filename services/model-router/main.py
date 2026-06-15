@@ -1325,6 +1325,66 @@ async def messages(request: Request):
     return JSONResponse(content=result)
 
 
+# ─── Embeddings ──────────────────────────────────────────────────────────────
+# The memory governor's Plane C vector retrieval embeds its query through here
+# so the "never call a provider directly" principle holds and the model is
+# pinned to match Honcho's document embeddings (same 1536-dim vector space).
+# Disabled (503) unless an embedding key is set. EMBEDDING_BASE_URL unset ->
+# OpenAI.com; set it to point at an Azure/Foundry deployment of the same model.
+_EMBED_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
+_EMBED_API_KEY = os.environ.get("EMBEDDING_API_KEY") or os.environ.get("OPENAI_API_KEY")
+_EMBED_API_BASE = os.environ.get("EMBEDDING_BASE_URL") or None
+_EMBED_TIMEOUT_S = int(os.environ.get("EMBEDDING_TIMEOUT_SECONDS", "20"))
+_EMBED_MAX_INPUTS = int(os.environ.get("EMBEDDING_MAX_INPUTS", "256"))
+
+
+@app.post("/v1/embeddings")
+async def embeddings(request: Request):
+    """OpenAI-compatible embeddings passthrough.
+
+    Used by the memory governor's Plane C vector retrieval; pins the model so the
+    query embedding lands in the same space as Honcho's document embeddings.
+    503 when no embedding key is configured (clean fork/disable)."""
+    _verify_auth(request)
+    _check_rate_limit(request)
+    if not _EMBED_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="embeddings not configured (set EMBEDDING_API_KEY or OPENAI_API_KEY)",
+        )
+    body = await request.json()
+    inp = body.get("input")
+    if inp is None or (isinstance(inp, str) and not inp.strip()):
+        raise HTTPException(status_code=400, detail="'input' is required")
+    if isinstance(inp, list) and len(inp) > _EMBED_MAX_INPUTS:
+        raise HTTPException(status_code=400, detail=f"too many inputs (max {_EMBED_MAX_INPUTS})")
+    try:
+        resp = await litellm.aembedding(
+            model=_EMBED_MODEL,
+            input=inp,
+            api_key=_EMBED_API_KEY,
+            api_base=_EMBED_API_BASE,
+            timeout=_EMBED_TIMEOUT_S,
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.warning("embeddings call failed: %s", exc)
+        raise HTTPException(status_code=502, detail=f"embedding provider error: {exc}")
+    try:
+        payload = resp.model_dump()
+    except AttributeError:
+        payload = resp if isinstance(resp, dict) else dict(resp)
+    data = payload.get("data") or []
+    return {
+        "object": "list",
+        "data": [
+            {"object": "embedding", "index": d.get("index", i), "embedding": list(d["embedding"])}
+            for i, d in enumerate(data)
+        ],
+        "model": payload.get("model") or _EMBED_MODEL,
+        "usage": payload.get("usage") or {},
+    }
+
+
 @app.get("/health")
 async def health():
     _reset_if_new_day()
