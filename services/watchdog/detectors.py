@@ -223,6 +223,49 @@ def detect_stale_sync(last_sync_ts: Optional[datetime], *, now: datetime,
     return []
 
 
+SECRET_EXPIRY_WARN_DAYS = 14
+
+
+def detect_expiring_secrets(secrets: Iterable[dict], *, now: datetime,
+                            warn_days: int = SECRET_EXPIRY_WARN_DAYS) -> list[Finding]:
+    """Key Vault secrets/certs at or near expiry.
+
+    `secrets` is [{name, expires_on}] where expires_on is a tz-aware datetime or
+    None (no expiry set -> skipped; those never lapse). Flags anything already
+    expired (critical) or within warn_days of expiring (high). A lapsed
+    credential in a multi-agent system usually fails INDIRECTLY -- an auth error
+    or a silent stall that is hard to trace back to the secret -- so surfacing it
+    ahead of time is the whole point. Pure: the caller lists the vault and
+    supplies `now`."""
+    out = []
+    for s in secrets:
+        exp = s.get("expires_on")
+        if exp is None:
+            continue
+        days = (exp - now).total_seconds() / 86400.0
+        name = s.get("name", "?")
+        evidence = {"secret": name, "expires_on": exp.isoformat(),
+                    "days_until_expiry": round(days, 1)}
+        if days < 0:
+            out.append(_ev(
+                "critical", f"secret-expiry:{name}",
+                f"Key Vault secret '{name}' has expired",
+                f"Secret '{name}' expired {abs(days):.0f} day(s) ago. Anything that "
+                f"reads it fails until it's rotated, and the failure usually shows up "
+                f"as an auth error or a silent stall somewhere downstream rather than "
+                f"as 'this secret expired'. Rotate it and update the Key Vault entry.",
+                evidence, "Security"))
+        elif days <= warn_days:
+            out.append(_ev(
+                "high", f"secret-expiry:{name}",
+                f"Key Vault secret '{name}' expires in {days:.0f} day(s)",
+                f"Secret '{name}' expires on {exp.date().isoformat()}, {days:.0f} "
+                f"day(s) from now. Rotate it before then so the agents and services "
+                f"that depend on it don't fail at an inconvenient hour.",
+                evidence, "Security"))
+    return out
+
+
 ALL_DETECTORS = (
     detect_adapter_failures,
     detect_stuck_wakes,

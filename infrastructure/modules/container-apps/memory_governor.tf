@@ -361,6 +361,19 @@ resource "azurerm_container_app_job" "watchdog" {
         name  = "GOVERNOR_WORKSPACE"
         value = var.honcho_workspace_name
       }
+      # Key Vault secret-expiry monitoring. The watchdog lists secret properties
+      # (names + expiry, not values) via its managed identity and files an issue
+      # for anything expired or expiring soon. The identity already holds
+      # "Key Vault Secrets User". AZURE_CLIENT_ID tells the MSI endpoint which
+      # user-assigned identity to mint a token for.
+      env {
+        name  = "WATCHDOG_KEY_VAULT_URI"
+        value = var.key_vault_uri
+      }
+      env {
+        name  = "AZURE_CLIENT_ID"
+        value = azurerm_user_assigned_identity.memory_governor[0].client_id
+      }
     }
   }
 

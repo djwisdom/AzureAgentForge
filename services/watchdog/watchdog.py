@@ -34,9 +34,63 @@ import os
 import sys
 import time
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import attribution, detectors, filer, memory, scorecards
+
+
+def _msi_token(resource: str) -> str | None:
+    """Managed-identity access token via the Container Apps / App Service MSI
+    endpoint (IDENTITY_ENDPOINT / IDENTITY_HEADER, injected by the runtime when an
+    identity is assigned). Returns None when not running with an identity (e.g.
+    locally), so secret monitoring simply skips."""
+    endpoint, header = os.getenv("IDENTITY_ENDPOINT"), os.getenv("IDENTITY_HEADER")
+    if not (endpoint and header):
+        return None
+    url = f"{endpoint}?resource={resource}&api-version=2019-08-01"
+    client_id = os.getenv("AZURE_CLIENT_ID")
+    if client_id:
+        url += f"&client_id={client_id}"
+    try:
+        req = urllib.request.Request(url, headers={"X-IDENTITY-HEADER": header})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.loads(r.read()).get("access_token")
+    except Exception as e:
+        print(f"[watchdog] MSI token fetch failed: {e}", file=sys.stderr)
+        return None
+
+
+def _fetch_kv_secret_expiries(vault_uri: str) -> list[dict]:
+    """List Key Vault secret properties (name + expiry) via the data-plane REST
+    API, authenticated with the container's managed identity. Returns
+    [{name, expires_on}] (expires_on is a tz-aware datetime or None). Empty on any
+    failure -- secret monitoring is best-effort and never blocks the run."""
+    token = _msi_token("https://vault.azure.net")
+    if not token:
+        return []
+    out: list[dict] = []
+    url = f"{vault_uri.rstrip('/')}/secrets?api-version=7.4"
+    try:
+        while url:
+            req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                data = json.loads(r.read() or "{}")
+            for item in data.get("value", []):
+                attrs = item.get("attributes", {})
+                if not attrs.get("enabled", True):
+                    continue
+                exp = attrs.get("exp")
+                name = (item.get("id") or "").rstrip("/").split("/")[-1]
+                out.append({
+                    "name": name,
+                    "expires_on": datetime.fromtimestamp(exp, tz=timezone.utc) if exp else None,
+                })
+            url = data.get("nextLink")
+    except Exception as e:
+        print(f"[watchdog] Key Vault secret list failed: {e}", file=sys.stderr)
+        return []
+    return out
 
 DEFAULT_BASE = "https://app.example.com"
 # Per-agent monthly caps in dollars (illustrative defaults).
@@ -201,6 +255,15 @@ def main() -> int:
 
     findings = detectors.run_detectors(runs, events, agent_caps=DEFAULT_CAPS,
                                        last_sync_ts=last_sync, monitor_standby_sync=standby_monitor)
+
+    # Key Vault secret-expiry monitoring (opt-in via WATCHDOG_KEY_VAULT_URI). A
+    # lapsed credential fails the dependent agents indirectly, so flag it early.
+    vault_uri = os.getenv("WATCHDOG_KEY_VAULT_URI", "").strip()
+    if vault_uri:
+        secrets = _fetch_kv_secret_expiries(vault_uri)
+        findings += detectors.detect_expiring_secrets(secrets, now=datetime.now(timezone.utc))
+        print(f"[watchdog] key-vault secrets checked={len(secrets)}")
+
     seen = _load_seen(state)
     fresh = detectors.dedup(findings, seen)
     print(f"[watchdog] findings={len(findings)} fresh={len(fresh)}")

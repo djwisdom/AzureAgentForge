@@ -48,6 +48,7 @@ Closing the path from "infrastructure provisioned" to "fully running stack in on
 - Post-deploy smoke tests
 - One-command full local stack (`docker compose --profile full up`)
 - Full Microsoft Teams integration
+- Secret-expiry monitoring: the watchdog detector that lists Key Vault secret/cert expiry and files an issue before a lapsed credential takes down the agents that depend on it (code shipped flag-gated off; goes live with the first deploy)
 - First fully validated end-to-end Azure deploy from a clean subscription
 
 ## Later

@@ -186,3 +186,46 @@ def test_run_detectors_standby_sync_is_opt_in():
     out = detectors.run_detectors([], [], last_sync_ts=_NOW - timedelta(hours=50),
                                   now=_NOW, monitor_standby_sync=True)
     assert any(f.signature == "standby-sync:stale" for f in out)
+
+
+# ---------------------------------------------------------------------------
+# Key Vault secret expiry
+# ---------------------------------------------------------------------------
+
+def _sec(name, exp):
+    return {"name": name, "expires_on": exp}
+
+
+def test_expired_secret_flags_critical():
+    out = detectors.detect_expiring_secrets([_sec("jwt-signing", _NOW - timedelta(days=2))], now=_NOW)
+    assert len(out) == 1
+    assert out[0].signature == "secret-expiry:jwt-signing"
+    assert out[0].severity == "critical"
+    assert out[0].recommended_owner == "Security"
+
+
+def test_expiring_soon_flags_high():
+    out = detectors.detect_expiring_secrets([_sec("api-key", _NOW + timedelta(days=5))], now=_NOW)
+    assert len(out) == 1 and out[0].severity == "high"
+    assert out[0].evidence["days_until_expiry"] == 5.0
+
+
+def test_healthy_secret_not_flagged():
+    assert detectors.detect_expiring_secrets([_sec("api-key", _NOW + timedelta(days=90))], now=_NOW) == []
+
+
+def test_no_expiry_set_is_skipped():
+    # a secret with no expiry never lapses, so it is not a finding.
+    assert detectors.detect_expiring_secrets([_sec("permanent", None)], now=_NOW) == []
+
+
+def test_warn_window_boundary_and_mixed_set():
+    secrets = [
+        _sec("a", _NOW - timedelta(days=1)),    # expired -> critical
+        _sec("b", _NOW + timedelta(days=10)),   # within 14d -> high
+        _sec("c", _NOW + timedelta(days=40)),   # healthy -> none
+        _sec("d", None),                        # no expiry -> none
+    ]
+    out = detectors.detect_expiring_secrets(secrets, now=_NOW, warn_days=14)
+    by_sev = {f.evidence["secret"]: f.severity for f in out}
+    assert by_sev == {"a": "critical", "b": "high"}
