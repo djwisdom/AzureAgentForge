@@ -30,7 +30,7 @@ The Terraform modules reference Key Vault secret IDs at deploy time; the actual 
 
 ## Network posture
 
-All resources share one VNet. PostgreSQL is deployed with VNet injection in both profiles — it has no public endpoint. It is only reachable from within the VNet.
+All resources share one VNet. PostgreSQL is deployed with VNet injection in both profiles; it has no public endpoint. It is only reachable from within the VNet.
 
 Ingress into Container Apps works one of two ways depending on the profile:
 
@@ -48,19 +48,19 @@ For a development or personal deployment, the public-endpoint-with-firewall appr
 
 ## Deploy-time safety: the destroy gate
 
-Creating and updating resources is routine. Deleting or replacing them is not —
-a replace can mean data loss (a recreated database, a regenerated key). So the
+Creating and updating resources is routine. Deleting or replacing them is not.
+A replace can mean data loss (a recreated database, a regenerated key), so the
 apply path treats destructive plans differently from additive ones.
 
 The Forge Console parses the saved plan with `terraform show -json` and checks
-each `resource_changes[].change.actions` for `"delete"` — which catches pure
+each `resource_changes[].change.actions` for `"delete"`, which catches pure
 deletes (`["delete"]`) and both replace orderings (`["delete","create"]`,
 `["create","delete"]`). If none are present, apply proceeds with the normal
 environment-name confirmation. If any are present, apply is blocked behind a
 second, explicit approval that lists exactly which resources would be destroyed
 or replaced and requires typing a distinct `approve-destroy` token. The check
 runs server-side against the saved plan, and apply only ever runs that saved
-plan — so what you approved is what executes.
+plan, so what you approved is what executes.
 
 If you deploy from your own pipeline, reproduce the gate: `terraform plan -out
 tfplan`, then fail the run or require manual approval when the plan contains a

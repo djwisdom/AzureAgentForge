@@ -33,7 +33,7 @@ Orchestrator  (frontier)
 
 | Name           | Role            | Tier     | Toolsets                | Reports to     |
 |----------------|-----------------|----------|-------------------------|----------------|
-| Orchestrator   | orchestrator    | frontier | terminal, file          | —              |
+| Orchestrator   | orchestrator    | frontier | terminal, file          | -              |
 | Coder          | coder           | standard | terminal, file, browser | Orchestrator   |
 | CostGuardian   | cost-guardian   | economy  | terminal, file          | Orchestrator   |
 | Curator        | curator         | economy  | terminal, file          | Orchestrator   |
@@ -64,11 +64,11 @@ Each profile is a YAML file in [`../agents/profiles/`](../agents/profiles/) vali
 
 | Value      | Meaning                                                                     |
 |------------|-----------------------------------------------------------------------------|
-| `frontier` | Highest-capability deployment — used for complex reasoning and coordination |
-| `standard` | Mid-tier deployment — used for implementation and structured tasks          |
-| `economy`  | Lowest-cost deployment — used for focused, well-scoped subtasks             |
+| `frontier` | Highest-capability deployment, for complex reasoning and coordination       |
+| `standard` | Mid-tier deployment, for implementation and structured tasks                |
+| `economy`  | Lowest-cost deployment, for focused, well-scoped subtasks                   |
 
-`model_tier` is a human-facing label. The router does not read it directly. The operational role-to-deployment mapping is configured separately via `PERSONA_TIERS_JSON`, which maps each role to a concrete registered tier key (e.g. `gpt4o-mini`, `phi4`). Keep that mapping consistent with the labels here — a `frontier` role should point at your most capable deployment. See [`../services/model-router/README.md`](../services/model-router/README.md) and [`../services/model-router/persona-tiers.example.json`](../services/model-router/persona-tiers.example.json).
+`model_tier` is a human-facing label. The router does not read it directly. The operational role-to-deployment mapping is configured separately via `PERSONA_TIERS_JSON`, which maps each role to a concrete registered tier key (e.g. `gpt4o-mini`, `phi4`). Keep that mapping consistent with the labels here: a `frontier` role should point at your most capable deployment. See [`../services/model-router/README.md`](../services/model-router/README.md) and [`../services/model-router/persona-tiers.example.json`](../services/model-router/persona-tiers.example.json).
 
 ### `toolsets` values
 

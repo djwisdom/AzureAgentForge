@@ -14,14 +14,14 @@ Compose or deploy them to Azure Container Apps with Terraform.
 
 Pick a path:
 
-- **Path 0 — Forge Console (recommended).** Run `./forge` from the repo root
+- **Path 0, Forge Console (recommended).** Run `./forge` from the repo root
   and a local web console handles both paths below: prerequisite checks, a
   configuration form, and live-streamed Terraform runs (or the Docker Compose
   working slice). See [`installer/README.md`](../installer/README.md).
-- **Path A — local first.** Good for exploring the codebase or iterating on
+- **Path A, local first.** Good for exploring the codebase or iterating on
   agents before touching Azure. Requires Docker and an LLM endpoint (Azure AI
   Foundry or any OpenAI-compatible API).
-- **Path B — deploy to Azure.** Provisions the full infrastructure: Container
+- **Path B, deploy to Azure.** Provisions the full infrastructure: Container
   Registry, PostgreSQL Flexible Server, Key Vault, Container Apps, and
   optional monitoring. Requires an Azure subscription, `az` CLI, and
   Terraform >= 1.5.
@@ -45,7 +45,7 @@ compatible endpoint (Ollama, vLLM, or a hosted API) instead.
 
 ---
 
-## Path A — run it locally
+## Path A - run it locally
 
 ### 1. Copy and fill the environment file
 
@@ -107,7 +107,7 @@ See [ROADMAP.md](../ROADMAP.md).
 
 ---
 
-## Path B — deploy to Azure
+## Path B - deploy to Azure
 
 ### 1. Clone and enter the dev environment
 
@@ -160,7 +160,7 @@ discord_enabled  = false
 
 Fill in your `subscription_id`. Change `location` if you want a different
 Azure region. The `container_registry_name` variable (in `variables.tf`)
-defaults to `"aafregistry"` — this must be globally unique, so override it
+defaults to `"aafregistry"`, which must be globally unique, so override it
 in `terraform.tfvars` if that name is taken.
 
 ### 4. Choose a cost profile
@@ -257,13 +257,13 @@ From here, the same steps as the local path apply:
 
 ## Honest expectations
 
-This stack runs in production on Azure — it is a proven platform, and this repo
+This stack runs in production on Azure; it is a proven platform, and this repo
 is its sanitized, reusable version. What's left to you is setup, not whether it
 works: a clean clone validates and plans without errors; `docker compose up`
 starts postgres and model-router (the full local stack needs `--profile full`
 and upstream sources, one-command in v1.1); and `terraform apply` provisions the
 infrastructure. Building and pushing the service images, IAM/auth between GitHub
 and Azure, and secret seeding are manual today and become a single command in
-the v1.1 CLI installer. The cloud prerequisites — your Azure subscription, an AI
-Foundry project (or substitute endpoint), Terraform state storage — are yours to
+the v1.1 CLI installer. The cloud prerequisites (your Azure subscription, an AI
+Foundry project or substitute endpoint, and Terraform state storage) are yours to
 provide. Cost figures are estimates pending your own bill.

@@ -9,7 +9,7 @@
 
 `.github/workflows/deploy.yml` is a **reference** GitHub Actions pipeline you wire
 up against your own Azure subscription. It is intentionally *not* run by this
-repo's own CI — the public repo holds no cloud credentials, so CI stays
+repo's own CI: the public repo holds no cloud credentials, so CI stays
 validate-only (`fmt`, `validate`, `compose config`, tests). This workflow is the
 piece you add when you fork and deploy for real.
 
@@ -33,21 +33,21 @@ plan ──► detect-destroy ──► apply
   reviewer before apply.
 
 "Destructive" is decided by `installer/detect_destroy.py`, which calls
-`installer.core.plan_has_destroy` — the *same* function the
+`installer.core.plan_has_destroy`, the *same* function the
 [Forge Console](../installer/README.md) GUI uses. A resource counts as destroyed
 if its `terraform show -json` actions contain `delete`: a pure `["delete"]` and
 both replace orderings (`["delete","create"]`, `["create","delete"]`) all gate.
-If the plan JSON can't be parsed, the detector **fails safe** — it routes to
+If the plan JSON can't be parsed, the detector **fails safe** and routes to
 manual approval rather than auto-applying something it couldn't read.
 
 The apply job uses a `needs` + `if` split so the gate is skipped on
 non-destructive plans (and apply still runs via `if: always()` with explicit
 result checks). It applies the **saved plan file** verbatim, so what a reviewer
-approved is exactly what is applied — no re-plan in between.
+approved is exactly what is applied, with no re-plan in between.
 
 ## One-time setup
 
-### 1. Federated (OIDC) Azure credentials — no stored secrets
+### 1. Federated (OIDC) Azure credentials - no stored secrets
 
 Create an Entra ID app registration + service principal, grant it `Contributor`
 (and `User Access Administrator` if you deploy the RBAC role assignments) on the
@@ -89,7 +89,7 @@ Create the state storage account once (any standard pattern works); the
 pipeline passes these via `terraform init -backend-config=` so no real values
 live in `backend.tf`.
 
-### 3. The approval gate — a GitHub **Environment**
+### 3. The approval gate - a GitHub **Environment**
 
 Create an environment named **`deploy-destroy`**
 (Settings → Environments → New environment) and add yourself (or your team) under

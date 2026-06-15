@@ -9,7 +9,7 @@
 
 ## Overview
 
-AzureAgentForge runs on Azure Container Apps inside a single VNet. Four containerized services — PaperClip, Hermes, the Model Router, and Honcho — run alongside a private PostgreSQL Flexible Server. Traffic between them stays inside the VNet; LLM inference leaves only through the Model Router, bound for Azure AI Foundry or a fallback OpenAI-compatible endpoint. Users reach the platform through PaperClip's web UI, or optionally through Telegram and Discord bridges. Credentials live in Key Vault and are fetched at container startup. Logs go to a shared Log Analytics workspace.
+AzureAgentForge runs on Azure Container Apps inside a single VNet. Four containerized services (PaperClip, Hermes, the Model Router, and Honcho) run alongside a private PostgreSQL Flexible Server. Traffic between them stays inside the VNet; LLM inference leaves only through the Model Router, bound for Azure AI Foundry or a fallback OpenAI-compatible endpoint. Users reach the platform through PaperClip's web UI, or optionally through Telegram and Discord bridges. Credentials live in Key Vault and are fetched at container startup. Logs go to a shared Log Analytics workspace.
 
 ---
 
@@ -27,7 +27,7 @@ graph TD
         DC["Discord (opt-in)"]
     end
 
-    subgraph platform["Azure Container Apps — single VNet"]
+    subgraph platform["Azure Container Apps - single VNet"]
         PC["PaperClip\nOrchestrator + UI\n(Container App)"]
         AR["Agent runtime\nHermes\n(Container App)"]
         MR["Model Router\nOpenAI-compat gateway\n(Container App)"]
@@ -112,12 +112,12 @@ Both Honcho and PostgreSQL are private; no agent memory leaves the VNet.
 > control, six memory classes, computed trust, a four-plane retrieval planner,
 > contradiction detection, and a self-improvement loop on top of it. It is bundled
 > in this repo (`services/memory-governor/` + `services/watchdog/`) but ships
-> **flag-gated off** — see [`design/memory-system.md`](design/memory-system.md)
+> **flag-gated off**. See [`design/memory-system.md`](design/memory-system.md)
 > for the full model and the explicitly-not-built long tail.
 
 ### Memory Governor (optional, flag-gated off)
 
-**Role:** governance layer over agent memory — admission control, trust scoring, retrieval planning.  
+**Role:** governance layer over agent memory: admission control, trust scoring, retrieval planning.  
 **Azure resources:** `azurerm_container_app` (`memory-governor`, with a model-router sidecar) + scheduled `azurerm_container_app_job`s (TTL sweeper, digest poster). Gated by `memory_governor_enabled` (default `false`).
 
 A FastAPI sidecar between the agents and Honcho's `documents` table (plus one `session_memory` table it owns). `POST /admit` is the write-time choke point: classify → validate scope → check the writer's authority → dedupe → persist. `POST /plan-retrieval` is the read-time planner: it assembles a four-plane package (always-on, governed retrieval, session, plus failure-lesson injection), filtered by per-agent read authority and ranked by a hybrid pgvector + trigram score. Background loops (a second-stage annotator, a task-scope-close watcher, a TTL sweeper, and a contradiction sweep) run inside the app, each gated by its own flag and idle when off. With every flag off the service is an idle, sidecar-class app and `/admit` returns `disabled`.
@@ -127,7 +127,7 @@ A FastAPI sidecar between the agents and Honcho's `documents` table (plus one `s
 **Role:** the self-improvement loop's write side.  
 **Azure resource:** `azurerm_container_app_job` (`watchdog`), scheduled ~every 10 minutes. Gated by `memory_governor_enabled` + the `AGENT_EVENTS_ENABLED` flag.
 
-A pure detector library scans recent run results and `agent_events` for failure signatures (repeated adapter failures, stuck wakes, budget anomalies, fabrication-guard trips, standby-site sync staleness), dedupes them, and files an issue per fresh finding. When a finding names a specific agent it also writes a peer-scoped `durable_fact` lesson through the governor, which the planner re-injects into that agent — so agents stop relearning the same failure. It refuses to run unless `AGENT_EVENTS_ENABLED` is on.
+A pure detector library scans recent run results and `agent_events` for failure signatures (repeated adapter failures, stuck wakes, budget anomalies, fabrication-guard trips, standby-site sync staleness), dedupes them, and files an issue per fresh finding. When a finding names a specific agent it also writes a peer-scoped `durable_fact` lesson through the governor, which the planner re-injects into that agent, so agents stop relearning the same failure. It refuses to run unless `AGENT_EVENTS_ENABLED` is on.
 
 ### PostgreSQL Flexible Server
 
@@ -200,7 +200,7 @@ Two chat surfaces are off by default and enabled with a single Terraform variabl
 
 The governed-memory layer has **two** gating tiers. `memory_governor_enabled`
 (above) controls whether the service is *deployed*; on top of that, every
-governed *behavior* is gated by a row in the `feature_flags` database table —
+governed *behavior* is gated by a row in the `feature_flags` database table,
 all seeded `false` by the migrations under `infrastructure/migrations/`
 (`AGENT_EVENTS_ENABLED`, `MEMORY_CLASSES_ENABLED`, `MEMORY_PLANNER_ENABLED`,
 `MEMORY_SESSION_SEPARATION_ENABLED`, `MEMORY_TTL_SWEEPER_ENABLED`,
@@ -234,8 +234,8 @@ See [`../infrastructure/profiles/README.md`](../infrastructure/profiles/README.m
 
 ## Maturity
 
-This stack runs in production on Azure — the architecture and components below are
-battle-tested in day-to-day use. This repository is the sanitized, reusable version
+This stack runs in production on Azure; the architecture and components below are
+in day-to-day use. This repository is the sanitized, reusable version
 of that platform; its CI validates every commit to plan stage (Terraform
 validate/plan, `docker compose config`, unit/schema tests), since a fork's own
 subscription and credentials are not bundled here.
@@ -248,14 +248,14 @@ subscription and credentials are not bundled here.
 | `docker-compose.yml` (local dev stack) | proven | Local working slice (postgres + model-router); full stack via `--profile full` |
 | Cost profiles (`cost-optimized`, `hardened`) | proven | In use; repo CI plans clean for both |
 | Multi-tenancy (schema-per-tenant, RLS, per-tenant routing) | design target | ~20-30% implemented; not yet deployed; see [`../roadmap/multi-tenant/`](../roadmap/multi-tenant/) |
-| Governed memory (planes/classes/trust/self-improvement loop) | shipped (flag-gated off) | Governor + retrieval planner + background loops + hybrid vector retrieval + self-improvement watchdog ported under [`../services/memory-governor/`](../services/memory-governor/) and [`../services/watchdog/`](../services/watchdog/); ~150 offline tests in CI; every flag seeds OFF (ship-dark). Long-tail items (reflection pass, inspector UI, in-channel controls, contradiction auto-resolve) remain design-only — see [`design/memory-system.md`](design/memory-system.md) §15 |
+| Governed memory (planes/classes/trust/self-improvement loop) | shipped (flag-gated off) | Governor + retrieval planner + background loops + hybrid vector retrieval + self-improvement watchdog ported under [`../services/memory-governor/`](../services/memory-governor/) and [`../services/watchdog/`](../services/watchdog/); ~150 offline tests in CI; every flag seeds OFF (ship-dark). Long-tail items (reflection pass, inspector UI, in-channel controls, contradiction auto-resolve) remain design-only; see [`design/memory-system.md`](design/memory-system.md) §15 |
 | Reference deploy pipeline (destroy-aware approval gate) | reference | [`deploy-pipeline.md`](deploy-pipeline.md) + `.github/workflows/deploy.yml`; adopters wire to their own subscription |
 
 **Status vocabulary:**
-- `proven` — deployed and running in the maintainer's production Azure environment. This repository is the sanitized version; standing up your own instance takes manual setup (subscription, IAM/auth, building and deploying the OSS components, secret seeding), automated by the v1.1 CLI installer.
-- `design target` — design is substantially complete; implementation is partial or a scaffold; not yet deployed.
-- `design reference` — a complete, implementable architecture is documented here, but the implementing code is intentionally not bundled in this repository.
-- `shipped (flag-gated off)` — the implementing code is bundled, sanitized, and unit-tested in CI, but ships disabled (every feature flag seeds OFF) and has not been deployed or verified end-to-end against a live database. An honest middle ground between `design reference` and `proven`.
-- `reference` — a ready-to-adapt template (e.g. a workflow) that adopters wire to their own subscription; not run by this repo's CI.
+- `proven`: deployed and running in the maintainer's production Azure environment. This repository is the sanitized version; standing up your own instance takes manual setup (subscription, IAM/auth, building and deploying the OSS components, secret seeding), automated by the v1.1 CLI installer.
+- `design target`: design is substantially complete; implementation is partial or a scaffold; not yet deployed.
+- `design reference`: a complete, implementable architecture is documented here, but the implementing code is intentionally not bundled in this repository.
+- `shipped (flag-gated off)`: the implementing code is bundled, sanitized, and unit-tested in CI, but ships disabled (every feature flag seeds OFF) and has not been deployed or verified end-to-end against a live database. An honest middle ground between `design reference` and `proven`.
+- `reference`: a ready-to-adapt template (e.g. a workflow) that adopters wire to their own subscription; not run by this repo's CI.
 
 For the multi-tenancy roadmap, see [`../roadmap/multi-tenant/README.md`](../roadmap/multi-tenant/README.md).

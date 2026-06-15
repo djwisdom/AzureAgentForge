@@ -32,37 +32,28 @@ Then you try to run one for real work and the uncomfortable questions show up:
 
 **AzureAgentForge is built for that gap.**
 
-It brings together leading open-source agent tools — **PaperClip** for orchestration and UI, **Hermes** for agent execution, and **Honcho** for private memory — then wraps them in an Azure-ready foundation with Terraform, Key Vault, Container Apps, PostgreSQL, budget-aware model routing, and centralized logging.
+It brings together three leading open-source agent tools, **PaperClip** for orchestration and UI, **Hermes** for agent execution, and **Honcho** for private memory, then wraps them in an Azure-ready foundation with Terraform, Key Vault, Container Apps, PostgreSQL, budget-aware model routing, and centralized logging.
 
 Most LLM calls are routed through **Azure AI Foundry**, which keeps model integration simple while aligning with the Azure security model. Where supported, the platform is designed to favor Microsoft Entra ID and managed identity patterns over long-lived API keys.
 
-It is not trying to be another cute local demo.
-
-It is a practical starting point for people who want agent teams they can deploy, monitor, constrain, talk to, and improve.
+This is not another cute local demo. It is a practical starting point for people who want agent teams they can deploy, monitor, constrain, talk to, and improve.
 
 ---
 
 ## See it in action
 
-A quick tour of the orchestrator UI — the dashboard, agent roster, issue board, and a live org chart of an agent team at work:
+A quick tour of the orchestrator UI: the dashboard, agent roster, issue board, and a live org chart of an agent team at work.
 
 <p align="center">
-  <img alt="PaperClip orchestrator UI — dashboard, agents, issue board, and org chart" src="docs/assets/paperclip-ui-demo.gif" width="820">
+  <img alt="PaperClip orchestrator UI: dashboard, agents, issue board, and org chart" src="docs/assets/paperclip-ui-demo.gif" width="820">
 </p>
 
-And the part most demos skip: what happens when a request is *dangerous*. Here's an agent refusing one.
-
-<p align="center">
-  <img alt="An agent refuses a destructive task" src="docs/assets/governance-refusal.gif" width="760"><br>
-  <em>A user asks the orchestrator to "delete this resource group." It doesn't — scope-guard plus a forbidden-tool block, with a full audit trail. A reproducible <a href="tests/replay/">replay fixture</a>, not a staged screenshot.</em>
-</p>
+The part most demos skip is what happens when a request is dangerous. Ask the orchestrator to "delete this resource group" and it refuses: a scope-guard and a forbidden-tool block stop it, with a full audit trail, and a reproducible [replay fixture](tests/replay/) pins the behavior so it isn't a staged screenshot. The [governance and blast-radius walkthrough](docs/walkthroughs/governance-and-blast-radius.md) traces every layer between that request and irreversible damage.
 
 <p align="center">
   <img alt="Destroy-aware approval gate" src="docs/assets/destroy-gate.gif" width="760"><br>
   <em>At the infrastructure layer, the destroy-aware gate lets routine changes apply unattended but blocks any plan that <strong>deletes or replaces</strong> a resource behind an explicit human approval.</em>
 </p>
-
-Want the full trace of every layer between a destructive request and irreversible damage? Read the [**governance &amp; blast-radius walkthrough →**](docs/walkthroughs/governance-and-blast-radius.md)
 
 ---
 
@@ -70,12 +61,12 @@ Want the full trace of every layer between a destructive request and irreversibl
 
 New in v1.1 (since the v1.0 open-source release):
 
-- **Governance &amp; blast-radius walkthrough** — a destructive request traced through every control that refuses it, backed by reproducible replay fixtures and the demos above.
-- **Destroy-aware approval gate** — in the Forge Console *and* as a reference CI/CD pipeline ([`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)): routine plans apply unattended; any delete/replace blocks on human approval. OIDC auth, no stored secrets ([setup](docs/deploy-pipeline.md)).
-- **Forge Console** (`./forge`) — a local web installer that runs preflight checks and a live-streamed `init → validate → plan → apply`, with typed confirmations for `apply`/`destroy`.
-- **Governed memory — now shipped (flag-gated off)** — the four-plane / six-class memory model with admission control, computed trust, contradiction detection, hybrid pgvector retrieval, and a self-improvement loop, ported as real code under [`services/memory-governor/`](services/memory-governor/) + [`services/watchdog/`](services/watchdog/) (~150 offline tests in CI). Every flag seeds **off**, so it's inert until you enable it. Architecture + the explicitly-not-built long tail: [`docs/design/memory-system.md`](docs/design/memory-system.md).
-- **14 golden orchestration replay fixtures** — regression tests that pin agent routing and refusal behavior ([`tests/replay/`](tests/replay/)).
-- **Measured Azure costs** — figures validated against real bills (~$83/mo observed on cost-optimized), not just models ([`docs/cost.md`](docs/cost.md)).
+- **Governance &amp; blast-radius walkthrough**: a destructive request traced through every control that refuses it, backed by reproducible replay fixtures and the demos above.
+- **Destroy-aware approval gate**: in the Forge Console *and* as a reference CI/CD pipeline ([`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)). Routine plans apply unattended; any delete/replace blocks on human approval. OIDC auth, no stored secrets ([setup](docs/deploy-pipeline.md)).
+- **Forge Console** (`./forge`): a local web installer that runs preflight checks and a live-streamed `init → validate → plan → apply`, with typed confirmations for `apply`/`destroy`.
+- **Governed memory, now shipped (flag-gated off)**: the four-plane / six-class memory model with admission control, computed trust, contradiction detection, hybrid pgvector retrieval, and a self-improvement loop, ported as real code under [`services/memory-governor/`](services/memory-governor/) + [`services/watchdog/`](services/watchdog/) (~150 offline tests in CI). Every flag seeds **off**, so it's inert until you enable it. Architecture and the explicitly-not-built long tail: [`docs/design/memory-system.md`](docs/design/memory-system.md).
+- **14 golden orchestration replay fixtures**: regression tests that pin agent routing and refusal behavior ([`tests/replay/`](tests/replay/)).
+- **Measured Azure costs**: figures validated against real bills (~$83/mo observed on cost-optimized), not just guessed from list prices ([`docs/cost.md`](docs/cost.md)).
 
 ---
 
@@ -87,7 +78,7 @@ Think of AzureAgentForge as a small operations center for agent teams.
 - **Hermes** is where the agents actually do the work.
 - **OpenClaw** support is planned as an additional agent execution option.
 - **Honcho** is the memory layer that keeps context private.
-- **Memory Governor** is the optional governance layer over that memory — it decides what's worth remembering, how much to trust it, and what to forget.
+- **Memory Governor** is the optional governance layer over that memory. It decides what's worth remembering, how much to trust it, and what to forget.
 - **Model Router** is the spending guardrail.
 - **Azure AI Foundry** is the preferred model gateway.
 - **Azure** is the secure building everything runs inside.
@@ -187,15 +178,15 @@ Honcho stores per-session and per-user memory in PostgreSQL with pgvector. Agent
 
 ### Governed memory: admission, trust, and a self-improvement loop
 
-Letting agents write unbounded rows into a vector store is how memory rots. The optional **Memory Governor** (`services/memory-governor/`) sits between the agents and the store as a write-time and read-time choke point: a classifier sorts each observation into one of six classes, an admission pipeline decides whether it's worth persisting (and dedupes near-duplicates), trust is *computed* from provenance + verification + usage rather than stored as a single rotting number, and a four-plane retrieval planner injects only what an agent is allowed to see, ranked by a hybrid of pgvector similarity and trigram match. Background loops sweep expired memory, flag contradictions for review (never auto-resolving — the operator finalizes), and a watchdog turns recurring failures into durable lessons the planner re-injects into the agent that keeps hitting them.
+Letting agents write unbounded rows into a vector store is how memory rots. The optional **Memory Governor** (`services/memory-governor/`) sits between the agents and the store as a write-time and read-time choke point: a classifier sorts each observation into one of six classes, an admission pipeline decides whether it's worth persisting (and dedupes near-duplicates), trust is *computed* from provenance + verification + usage rather than stored as a single rotting number, and a four-plane retrieval planner injects only what an agent is allowed to see, ranked by a hybrid of pgvector similarity and trigram match. Background loops sweep expired memory, flag contradictions for review (they never auto-resolve; the operator finalizes), and a watchdog turns recurring failures into durable lessons the planner re-injects into the agent that keeps hitting them.
 
-It ships **disabled** — every feature flag seeds off, so adding it to a running system changes nothing until you turn a flag on. See [enabling it](docs/design/memory-system.md#17-enabling-governed-memory) and the [architecture reference](docs/design/memory-system.md).
+It ships **disabled**. Every feature flag seeds off, so adding it to a running system changes nothing until you turn a flag on. See [enabling it](docs/design/memory-system.md#17-enabling-governed-memory) and the [architecture reference](docs/design/memory-system.md).
 
 ### Model access through Azure AI Foundry
 
 Most LLM integrations are designed to go through Azure AI Foundry first.
 
-That gives the platform a cleaner model gateway, simpler model management, and a better security posture for Azure-native environments. The goal is to reduce one-off API key sprawl and make model access feel like part of the platform, not an afterthought.
+That gives the platform a cleaner model gateway and a better security posture for Azure-native environments. The goal is to reduce one-off API key sprawl and make model access feel like part of the platform, not an afterthought.
 
 OpenAI-compatible endpoints remain supported as fallback options.
 
@@ -205,8 +196,8 @@ The model router enforces per-tier daily budgets. Agents on the `economy` tier c
 
 Two Terraform cost profiles are included:
 
-- `cost-optimized` — targets under $150/month in Azure infrastructure
-- `hardened` — zone-redundant posture, private endpoints, and longer log retention
+- `cost-optimized`: targets under $150/month in Azure infrastructure
+- `hardened`: zone-redundant posture, private endpoints, and longer log retention
 
 LLM token costs are separate and depend on your provider usage.
 
@@ -218,7 +209,7 @@ A dedicated `CostGuardian` role exists specifically to watch spend.
 
 ### Governance you can watch refuse a dangerous task
 
-When a destructive request lands — *"delete this resource group"* — the controls
+When a destructive request lands, say *"delete this resource group"*, the controls
 are independent and layered: the orchestrator's scope-guard, forbidden-tool
 blocks, role→tier routing, and a destroy-aware approval gate at the IaC layer.
 Each is designed so the *default* outcome is "nothing destructive happens," and a
@@ -269,7 +260,7 @@ The goal is simple: agents should not be trapped behind a text box. You should b
 
 You want agents that do more than chat.
 
-You want to give agents goals, tools, memory, and budgets — then see what they did, what they spent, and where they got stuck.
+You want to give agents goals, tools, memory, and budgets, then see what they did, what they spent, and where they got stuck.
 
 You want to run that system on Azure instead of duct-taping together a laptop demo, a hosted memory service, a mystery dashboard, and a pile of API keys.
 
@@ -306,7 +297,7 @@ As of v1.1, AzureAgentForge includes:
 - Governance & blast-radius walkthrough with reproducible replay fixtures
 - Destroy-aware approval gate (Forge Console + reference CI/CD pipeline)
 - 14 golden orchestration replay fixtures (agent-behavior regression tests)
-- Governed memory — governor service, retrieval planner, background loops, hybrid vector retrieval, and self-improvement watchdog (shipped, flag-gated off)
+- Governed memory: governor service, retrieval planner, background loops, hybrid vector retrieval, and self-improvement watchdog (shipped, flag-gated off)
 - Multi-tenant architecture design and early scaffolding
 
 The current local quickstart brings up PostgreSQL and the model router. The full one-command local stack and full end-to-end Azure installer are planned for v1.2.
@@ -340,7 +331,7 @@ This is not a replacement for the installer. It is a guided setup assistant for 
 
 ## Quickstart
 
-### Forge Console — the turnkey path
+### Forge Console - the turnkey path
 
 ```bash
 ./forge
@@ -351,8 +342,8 @@ prerequisite checks (Terraform, `az` login, Docker), a configuration form
 that writes your `terraform.tfvars` (with preview), then live-streamed
 `init → validate → plan → apply` in a terminal pane. Local Terraform state
 is handled automatically, so a first deploy needs zero pre-provisioned
-infrastructure. `apply` and `destroy` require typing the environment name —
-no accidental clicks. Details and the security model:
+infrastructure. `apply` and `destroy` require typing the environment name,
+so there are no accidental clicks. Details and the security model:
 [`installer/README.md`](installer/README.md).
 
 Prefer a guided walkthrough with an AI assistant instead? Start with
@@ -430,24 +421,24 @@ See [`docs/getting-started.md`](docs/getting-started.md) for the full Azure walk
 
 **Foundation (Terraform + Azure)**
 - ✅ Azure-hosted production stack, open-sourced
-- ✅ Full Terraform IaC — Container Apps, PostgreSQL Flexible Server (pgvector), ACR, Key Vault, Log Analytics, private VNet
-- ✅ Two cost profiles (cost-optimized < $150/mo, hardened) — CI plans both clean
+- ✅ Full Terraform IaC: Container Apps, PostgreSQL Flexible Server (pgvector), ACR, Key Vault, Log Analytics, private VNet
+- ✅ Two cost profiles (cost-optimized < $150/mo, hardened), and CI plans both clean
 - ✅ Measured Azure costs from real bills
 
 **Agents & models**
 - ✅ 13 predefined agent roles + schema with automated tests
-- ✅ Model router (local) — Azure AI Foundry primary, OpenAI-compatible fallback
+- ✅ Model router (local): Azure AI Foundry primary, OpenAI-compatible fallback
 - ✅ Per-tier daily budget caps
 - ✅ 14 golden orchestration replay fixtures (agent-behavior regression tests)
 
 **Governance & safety**
 - ✅ Role-scoped toolsets + a dedicated `CostGuardian` role
-- ✅ Destroy-aware approval gate — Forge Console + reference CI/CD pipeline (OIDC, no stored secrets)
+- ✅ Destroy-aware approval gate: Forge Console + reference CI/CD pipeline (OIDC, no stored secrets)
 - ✅ Governance & blast-radius walkthrough with demos
 - ✅ Key Vault secret pattern + private-by-default networking
 
 **Install & operate**
-- ✅ Forge Console (`./forge`) — local web installer with live-streamed deploy
+- ✅ Forge Console (`./forge`): local web installer with live-streamed deploy
 - ✅ AI-assisted setup path (Claude Code / Codex)
 - ✅ Local working slice (PostgreSQL + model router)
 - ✅ Log Analytics integration
@@ -456,17 +447,17 @@ See [`docs/getting-started.md`](docs/getting-started.md) for the full Azure walk
 - ✅ Optional Telegram + Discord surfaces
 - ✅ Multi-tenant architecture designed + early scaffolding
 
-**Governed memory** *(shipped, flag-gated off — code bundled + unit-tested in CI, not yet deployed end-to-end)*
+**Governed memory** *(shipped, flag-gated off; code bundled + unit-tested in CI, not yet deployed end-to-end)*
 - 🧠 Governor service + four-plane retrieval planner + six memory classes + computed trust + admission control + background loops + hybrid pgvector retrieval + the self-improvement watchdog ([`services/memory-governor/`](services/memory-governor/), [`services/watchdog/`](services/watchdog/)). Every feature flag seeds OFF. Architecture + the explicitly-not-built long tail: [`docs/design/memory-system.md`](docs/design/memory-system.md).
 
 ### Shipped in v1.1
 
-- ✅ Forge Console — local web GUI installer (`./forge`), superseding the planned ANSI TUI
+- ✅ Forge Console: local web GUI installer (`./forge`), superseding the planned ANSI TUI
 - ✅ AI-assisted setup documentation using Claude Code or Codex
 - ✅ Preflight checks (Terraform, `az` login, Docker, subscription detection)
 - ✅ Azure configuration wizard (tfvars form with preview + local-state backend handling)
 - ✅ Automated Terraform provision flow (live-streamed init/validate/plan/apply with typed confirmations and a destroy-aware apply gate)
-- ✅ Reference CI/CD deploy pipeline — GitHub Actions, OIDC auth (no stored secrets), with the same destroy-aware approval gate ([`docs/deploy-pipeline.md`](docs/deploy-pipeline.md))
+- ✅ Reference CI/CD deploy pipeline: GitHub Actions, OIDC auth (no stored secrets), with the same destroy-aware approval gate ([`docs/deploy-pipeline.md`](docs/deploy-pipeline.md))
 - ✅ Governance & blast-radius walkthrough with reproducible replay fixtures and demos
 - ✅ Governed-memory architecture reference ([`docs/design/memory-system.md`](docs/design/memory-system.md))
 - ✅ Measured Azure cost figures based on real bills
@@ -528,9 +519,7 @@ AzureAgentForge is intentionally aligned with where Microsoft is moving the agen
 - **Log Analytics and Application Insights** for operations and troubleshooting
 - **Microsoft 365 and Agent 365** as future distribution points where agents can meet users where they already work
 
-The goal is not to chase every new service.
-
-The goal is to make AzureAgentForge a practical bridge between open-source agent tooling and the Microsoft cloud capabilities that make agent systems safer, easier to operate, and easier to adopt inside real organizations.
+AzureAgentForge does not chase every new service that ships. It picks the ones that pull their weight and makes itself a practical bridge between open-source agent tooling and the Microsoft cloud capabilities that make agent systems safer and easier to operate inside real organizations.
 
 ---
 
@@ -569,7 +558,7 @@ Multi-tenant support is designed and partially scaffolded.
 | [`docs/security.md`](docs/security.md) | Secrets, network posture, and pre-production checklist |
 | [`docs/why-azure.md`](docs/why-azure.md) | The case for building agents on Azure |
 | [`docs/agents.md`](docs/agents.md) | The 13-role model and how to add your own |
-| [`docs/design/memory-system.md`](docs/design/memory-system.md) | Governed-memory architecture (four planes, six classes, trust model, self-improvement loop) — shipped flag-gated off; code under [`services/memory-governor/`](services/memory-governor/) + [`services/watchdog/`](services/watchdog/) |
+| [`docs/design/memory-system.md`](docs/design/memory-system.md) | Governed-memory architecture (four planes, six classes, trust model, self-improvement loop); shipped flag-gated off; code under [`services/memory-governor/`](services/memory-governor/) + [`services/watchdog/`](services/watchdog/) |
 | [`docs/deploy-pipeline.md`](docs/deploy-pipeline.md) | Reference GitHub Actions deploy pipeline with a destroy-aware approval gate (OIDC, no stored secrets) |
 
 ---
@@ -627,7 +616,7 @@ Good contributions include:
 - AI-assisted setup prompt improvements
 - tested integrations
 
-Please keep contributions practical. The goal is not to win buzzword bingo. The goal is to help people run useful agent systems with less chaos.
+Please keep contributions practical. Skip the buzzword bingo and help people run useful agent systems with less chaos.
 
 ---
 

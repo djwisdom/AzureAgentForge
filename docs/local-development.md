@@ -8,10 +8,10 @@
 # Local development
 
 `docker compose up` starts two services: Postgres and the model-router. That is
-the v1.0 working slice — enough to develop and test LLM routing without the
+the v1.0 working slice, enough to develop and test LLM routing without the
 rest of the stack. PaperClip and Honcho need `docker compose --profile full up`
 plus upstream project sources; that becomes one-command in v1.1. You need Docker
-Desktop and an LLM endpoint — Azure AI Foundry or anything OpenAI-compatible.
+Desktop and an LLM endpoint: Azure AI Foundry or anything OpenAI-compatible.
 
 ---
 
@@ -25,11 +25,11 @@ cp .env.example .env
 
 The minimum you need to fill in before `docker compose up` will succeed:
 
-- **`LLM_PROVIDER`** — keep `azure_foundry` if you have an AI Foundry
+- **`LLM_PROVIDER`**: keep `azure_foundry` if you have an AI Foundry
   project, or change to `openai_compat` for any other endpoint.
-- **`AZURE_FOUNDRY_ENDPOINT` + `AZURE_FOUNDRY_API_KEY`** — if using AI
+- **`AZURE_FOUNDRY_ENDPOINT` + `AZURE_FOUNDRY_API_KEY`**: if using AI
   Foundry.
-- **`OPENAI_COMPAT_BASE_URL` + `OPENAI_COMPAT_API_KEY`** — if using an
+- **`OPENAI_COMPAT_BASE_URL` + `OPENAI_COMPAT_API_KEY`**: if using an
   alternative endpoint.
 
 Everything else has a working default. Postgres uses `aaf`/`localdev`/`aaf`
