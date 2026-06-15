@@ -20,7 +20,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from . import config, db
-from .memory import admission
+from .memory import admission, planner
 
 logging.basicConfig(level=logging.INFO, format="%(name)s %(levelname)s %(message)s")
 log = logging.getLogger("governor.main")
@@ -100,11 +100,26 @@ async def admit(body: AdmitBody) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# /plan-retrieval — the four-plane retrieval planner.
-# TODO(phase 2): re-enable once governor/memory/planner.py is ported. It returns
-# a four-plane retrieval package gated by MEMORY_PLANNER_ENABLED + an injection
-# allowlist.
+# /plan-retrieval — the four-plane retrieval planner. Returns a retrieval
+# package gated by MEMORY_PLANNER_ENABLED + an injection allowlist; with the
+# flag off it returns enabled=false and the caller keeps its native context.
 # ---------------------------------------------------------------------------
+
+class PlanBody(BaseModel):
+    query: str = Field(min_length=1, max_length=8000)
+    workspace_name: str
+    agent_slug: str
+    active_scope_kind: str | None = None
+    active_scope_id: str | None = None
+    session_id: str | None = None
+    task_type: str | None = None
+    reasoning_level: str = "medium"
+
+
+@app.post("/plan-retrieval", dependencies=[Depends(require_key)])
+async def plan_retrieval(body: PlanBody) -> dict[str, Any]:
+    pkg = await planner.plan_retrieval(planner.RetrievalRequest(**body.model_dump()))
+    return pkg.__dict__
 
 
 # ---------------------------------------------------------------------------
