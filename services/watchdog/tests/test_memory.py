@@ -32,7 +32,7 @@ def test_roster_unknown_or_empty_returns_none():
     assert roster.slug_for("Nobody") is None
     assert roster.slug_for("") is None
     assert roster.slug_for(None) is None
-    assert roster.slug_for("8a34058f-0000-uuid") is None
+    assert roster.slug_for("00000000-0000-uuid") is None
 
 
 # ---------------------------------------------------------------------------
