@@ -7,15 +7,18 @@
 
 # Governed memory — architecture reference
 
-![status](https://img.shields.io/badge/status-design--reference-blue)
+![status](https://img.shields.io/badge/status-shipping%20%E2%80%94%20flag--gated%20off-orange)
 
-> **Status — read first.** This document is a **design reference**: it describes a
-> governed-memory architecture in enough depth to implement, and it is the model
-> AzureAgentForge is built toward. The **governor service code is not included in
-> this repository** — the published stack ships basic memory (self-hosted Honcho
-> + pgvector). Treat every "the governor does X" sentence as *the design*, not a
-> claim about code in this repo. Where the design deliberately stops short, this
-> doc says so (see [§15](#15-whats-designed-but-not-built)).
+> **Status — read first.** This document describes the governed-memory
+> architecture in enough depth to implement, and it is the model AzureAgentForge
+> is built toward. The governor service code now lands in this repository
+> **incrementally and flag-gated off** under
+> [`services/memory-governor/`](../../services/memory-governor/) — with every
+> flag off the platform ships basic memory (self-hosted Honcho + pgvector) and
+> behaves exactly as before. Components arrive phase by phase; where a "the
+> governor does X" sentence describes a part not yet ported, treat it as *the
+> design*. Where the design deliberately stops short, this doc says so (see
+> [§15](#15-whats-designed-but-not-built)).
 
 **Audience.** An engineer who wants to add a governance layer over an agent
 platform's memory — admission control, provenance, trust, retention, and a

@@ -1,0 +1,362 @@
+"""Memory Governor — FastAPI app.
+
+Internal-only service. Operator traffic arrives through the auth-proxy
+passthrough (/api/memory/* -> here) which injects the shared X-Governor-Key;
+in-network platform callers (the deriver hook, the memory CLI helper) attach the
+same key from their mounted secret.
+
+This module grows phase by phase. Today it exposes /admit (the admission choke
+point), the operator /memory/* admin surface, and the Plane D /session-memory
+CRUD. The retrieval planner, background loops, digest, and skill-candidate
+surfaces are added in later phases (see the TODO markers below).
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from fastapi import Depends, FastAPI, Header, HTTPException
+from pydantic import BaseModel, Field
+
+from . import config, db
+from .memory import admission
+
+logging.basicConfig(level=logging.INFO, format="%(name)s %(levelname)s %(message)s")
+log = logging.getLogger("governor.main")
+
+app = FastAPI(title="memory-governor", version=config.SERVICE_VERSION)
+
+
+async def require_key(x_governor_key: str | None = Header(default=None)) -> None:
+    if config.GOVERNOR_API_KEY and x_governor_key != config.GOVERNOR_API_KEY:
+        raise HTTPException(status_code=401, detail="missing or invalid X-Governor-Key")
+
+
+@app.on_event("startup")
+async def _startup() -> None:
+    # The background loops (annotator, scope-watcher, TTL sweeper, contradiction
+    # sweep) and the skill miner are spawned here in later phases. Each is
+    # flag-gated internally, so spawning them is a no-op until its flag is on.
+    pass
+
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    await db.close()
+
+
+@app.get("/healthz")
+async def healthz() -> dict[str, Any]:
+    out: dict[str, Any] = {"service": "memory-governor", "version": config.SERVICE_VERSION}
+    try:
+        p = await db.pool()
+        await p.fetchval("SELECT 1")
+        out["db"] = "ok"
+        out["flags"] = {
+            name: await db.flag_enabled(name)
+            for name in (
+                "AGENT_EVENTS_ENABLED",
+                "MEMORY_CLASSES_ENABLED",
+                "MEMORY_PLANNER_ENABLED",
+                "MEMORY_SESSION_SEPARATION_ENABLED",
+                "MEMORY_TTL_SWEEPER_ENABLED",
+            )
+        }
+    except Exception as exc:  # noqa: BLE001
+        out["db"] = f"error: {exc}"
+    return out
+
+
+# ---------------------------------------------------------------------------
+# /admit
+# ---------------------------------------------------------------------------
+
+class AdmitBody(BaseModel):
+    content: str = Field(min_length=1, max_length=65000)
+    workspace_name: str
+    observer: str
+    observed: str = "user"
+    created_by_peer: str
+    session_id: str | None = None
+    issue_id: str | None = None
+    context: str | None = None
+    memory_class: str | None = None
+    scope_kind: str | None = None
+    scope_id: str | None = None
+    source_type: str | None = None
+    verification_state: str | None = None
+    confidence_score: float | None = None
+    half_life_days: float | None = None
+    ttl_days: float | None = None
+    pin_request: bool = False
+    planner_hint: str | None = None
+
+
+@app.post("/admit", dependencies=[Depends(require_key)])
+async def admit(body: AdmitBody) -> dict[str, Any]:
+    result = await admission.admit(admission.AdmitRequest(**body.model_dump()))
+    return result.__dict__
+
+
+# ---------------------------------------------------------------------------
+# /plan-retrieval — the four-plane retrieval planner.
+# TODO(phase 2): re-enable once governor/memory/planner.py is ported. It returns
+# a four-plane retrieval package gated by MEMORY_PLANNER_ENABLED + an injection
+# allowlist.
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Admin API (backs the operator memory CLI via the auth-proxy passthrough)
+# ---------------------------------------------------------------------------
+
+VALID_ACTIONS = {"pin", "demote", "confirm", "dispute", "supersede", "rm", "reconfirm"}
+
+
+@app.get("/memory", dependencies=[Depends(require_key)])
+async def memory_list(
+    workspace_name: str,
+    memory_class: str | None = None,
+    verification_state: str | None = None,
+    scope_kind: str | None = None,
+    created_by: str | None = None,
+    pin_candidates: bool = False,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    clauses = ["workspace_name = $1", "deleted_at IS NULL", "memory_class IS NOT NULL"]
+    args: list[Any] = [workspace_name]
+    for value, column in (
+        (memory_class, "memory_class"),
+        (verification_state, "verification_state"),
+        (scope_kind, "memory_scope_kind"),
+        (created_by, "created_by_peer"),
+    ):
+        if value:
+            args.append(value)
+            clauses.append(f"{column} = ${len(args)}")
+    if pin_candidates:
+        clauses.append("(internal_metadata->>'pin_candidate')::boolean = true")
+
+    p = await db.pool()
+    rows = await p.fetch(
+        f"""SELECT id, left(content, 160) AS snippet, memory_class,
+                   memory_scope_kind, memory_scope_id, source_type,
+                   verification_state, confidence_score, trust_score,
+                   created_by_peer, created_at, last_confirmed_at, expires_at,
+                   half_life_days, is_always_on_candidate
+            FROM documents
+            WHERE {' AND '.join(clauses)}
+            ORDER BY created_at DESC
+            LIMIT {max(1, min(int(limit), 200))}""",
+        *args,
+    )
+    return [dict(r) for r in rows]
+
+
+@app.get("/memory/audit", dependencies=[Depends(require_key)])
+async def memory_audit(limit: int = 100) -> list[dict[str, Any]]:
+    p = await db.pool()
+    rows = await p.fetch(
+        """SELECT ts, actor_peer, event_type, payload FROM agent_events
+           WHERE event_type LIKE 'memory_%'
+           ORDER BY ts DESC LIMIT $1""",
+        max(1, min(limit, 500)),
+    )
+    return [dict(r) for r in rows]
+
+
+@app.get("/memory/{doc_id}", dependencies=[Depends(require_key)])
+async def memory_show(doc_id: str) -> dict[str, Any]:
+    p = await db.pool()
+    row = await p.fetchrow(
+        "SELECT * FROM documents WHERE id = $1 AND deleted_at IS NULL", doc_id
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="document not found")
+    d = dict(row)
+    d.pop("embedding", None)  # not JSON-serializable, not useful to operators
+    return d
+
+
+class ActionBody(BaseModel):
+    action: str
+    actor: str = "operator"
+    note: str | None = None
+    demote_to: str | None = None  # for demote
+    superseded_by: str | None = None  # for supersede
+
+
+ACTION_EVENT = {
+    "pin": "memory_promote",
+    "demote": "memory_demote",
+    "confirm": "memory_confirm",
+    "dispute": "memory_dispute",
+    "supersede": "memory_supersede",
+    "rm": "memory_delete",
+    "reconfirm": "memory_reconfirm",
+}
+
+
+@app.post("/memory/{doc_id}/action", dependencies=[Depends(require_key)])
+async def memory_action(doc_id: str, body: ActionBody) -> dict[str, Any]:
+    if body.action not in VALID_ACTIONS:
+        raise HTTPException(status_code=400, detail=f"unknown action {body.action!r}")
+    p = await db.pool()
+    row = await p.fetchrow(
+        "SELECT id, memory_class FROM documents WHERE id = $1 AND deleted_at IS NULL",
+        doc_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="document not found")
+
+    if body.action == "pin":
+        # Operator-only promotion — the auth-proxy route is operator surface;
+        # agents never reach /memory/*.
+        await p.execute(
+            """UPDATE documents
+               SET memory_class = 'pinned', verification_state = 'confirmed',
+                   reviewed_at = now(), last_confirmed_at = now(),
+                   review_note = $2, promotion_source_doc_id = id
+               WHERE id = $1""",
+            doc_id,
+            body.note,
+        )
+    elif body.action == "demote":
+        target = body.demote_to or "durable_fact"
+        if target not in ("durable_fact", "user_preference", "task_scoped", "decaying"):
+            raise HTTPException(status_code=400, detail=f"cannot demote to {target!r}")
+        await p.execute(
+            """UPDATE documents
+               SET memory_class = $2, reviewed_at = now(), review_note = $3
+               WHERE id = $1""",
+            doc_id,
+            target,
+            body.note,
+        )
+    elif body.action == "confirm":
+        await p.execute(
+            """UPDATE documents
+               SET verification_state = 'confirmed', last_confirmed_at = now(),
+                   reviewed_at = now(), review_note = COALESCE($2, review_note)
+               WHERE id = $1""",
+            doc_id,
+            body.note,
+        )
+    elif body.action == "dispute":
+        await p.execute(
+            """UPDATE documents
+               SET verification_state = 'disputed', reviewed_at = now(),
+                   contradiction_count = contradiction_count + 1,
+                   review_note = COALESCE($2, review_note)
+               WHERE id = $1""",
+            doc_id,
+            body.note,
+        )
+    elif body.action == "supersede":
+        await p.execute(
+            """UPDATE documents
+               SET verification_state = 'superseded', superseded_at = now(),
+                   reviewed_at = now(), review_note = COALESCE($2, review_note)
+               WHERE id = $1""",
+            doc_id,
+            body.note,
+        )
+    elif body.action == "rm":
+        await p.execute(
+            "UPDATE documents SET deleted_at = now(), review_note = COALESCE($2, review_note) WHERE id = $1",
+            doc_id,
+            body.note,
+        )
+    elif body.action == "reconfirm":
+        # Use-based earned trust: a memory that contributed to a successful
+        # outcome earns usage_success_count + a fresh last_confirmed_at. Skip
+        # disputed/superseded — a successful run must not resurrect
+        # operator-killed memory. The watchdog is the caller (actor=watchdog).
+        await p.execute(
+            """UPDATE documents
+               SET usage_success_count = COALESCE(usage_success_count, 0) + 1,
+                   last_confirmed_at = now()
+               WHERE id = $1
+                 AND verification_state NOT IN ('disputed', 'superseded')""",
+            doc_id,
+        )
+
+    await db.emit_event(
+        ACTION_EVENT[body.action],
+        body.actor,
+        {"doc_id": doc_id, "action": body.action, "note": body.note},
+    )
+    return {"doc_id": doc_id, "action": body.action, "status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Session memory (Plane D) — direct CRUD for session-scoped working state
+# ---------------------------------------------------------------------------
+
+class SessionMemoryBody(BaseModel):
+    workspace_name: str
+    session_id: str
+    content: str = Field(min_length=1, max_length=8000)
+    peer_id: str | None = None
+    created_by_peer: str = "unknown"
+
+
+@app.post("/session-memory", dependencies=[Depends(require_key)])
+async def session_memory_write(body: SessionMemoryBody) -> dict[str, Any]:
+    if not await db.flag_enabled("MEMORY_SESSION_SEPARATION_ENABLED"):
+        return {"status": "disabled", "reason": "MEMORY_SESSION_SEPARATION_ENABLED is off"}
+    p = await db.pool()
+    row = await p.fetchrow(
+        """INSERT INTO session_memory
+           (workspace_name, session_id, peer_id, memory_scope_id, content,
+            source_type, created_by_peer, expires_at)
+           VALUES ($1, $2, $3, $2, $4, 'agent_observed', $5,
+                   now() + interval '24 hours')
+           RETURNING id""",
+        body.workspace_name,
+        body.session_id,
+        body.peer_id,
+        body.content,
+        body.created_by_peer,
+    )
+    return {"status": "ok", "id": str(row["id"])}
+
+
+@app.get("/session-memory", dependencies=[Depends(require_key)])
+async def session_memory_list(workspace_name: str, session_id: str) -> list[dict[str, Any]]:
+    p = await db.pool()
+    rows = await p.fetch(
+        """SELECT id, content, peer_id, created_by_peer, created_at, expires_at
+           FROM session_memory
+           WHERE workspace_name = $1 AND session_id = $2 AND expires_at > now()
+           ORDER BY created_at ASC""",
+        workspace_name,
+        session_id,
+    )
+    return [dict(r) for r in rows]
+
+
+@app.delete("/session-memory", dependencies=[Depends(require_key)])
+async def session_memory_close(workspace_name: str, session_id: str) -> dict[str, Any]:
+    """Session close: hard-delete Plane D rows."""
+    p = await db.pool()
+    result = await p.execute(
+        "DELETE FROM session_memory WHERE workspace_name = $1 AND session_id = $2",
+        workspace_name,
+        session_id,
+    )
+    await db.emit_event(
+        "memory_expire",
+        "session-close",
+        {"workspace": workspace_name, "session_id": session_id, "result": result},
+        session_id=None,
+    )
+    return {"status": "ok", "deleted": result}
+
+
+# ---------------------------------------------------------------------------
+# /digest and /skill-candidates surfaces are added in a later phase alongside
+# the digest renderer and the skill-autogen miner (migration 0008).
+# TODO(phase 5): restore the daily memory digest + skill-candidate review API.
+# ---------------------------------------------------------------------------

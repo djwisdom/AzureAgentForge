@@ -64,5 +64,9 @@ jobs:
         run: |
           pip install -r installer/requirements.txt pytest httpx
           pytest -q installer/tests
+      - name: memory-governor
+        run: |
+          pip install pytest
+          pytest -q tests/memory-governor
       - name: compileall
         run: python -m compileall services installer
