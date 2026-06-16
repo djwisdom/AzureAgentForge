@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# Seed the AzureAgentForge Key Vault with the secrets the Container Apps mount.
+#
+# Idempotent: an existing secret is left untouched unless --force is given.
+# Two categories (the names match what infrastructure/modules/container-apps
+# references, so a deploy can resolve every secretRef):
+#
+#   generate  internal secrets with no external source — created with a random
+#             value if absent. Includes postgres-admin-password, which the
+#             keyvault module reads as a data source and feeds to Postgres, so
+#             it MUST exist before the first `terraform apply`.
+#
+#   external  values that come from you (LLM/provider keys, bot tokens, the
+#             Postgres connection strings). Read from an env var named after the
+#             secret, upper-cased with dashes as underscores
+#             (claude-api-key -> CLAUDE_API_KEY). Unset ones are skipped with a
+#             note — you only need keys for the providers/surfaces you enable.
+#
+# The connection strings (postgres-connection-string, paperclip-db-url) are
+# external on purpose: build them from your `terraform output` after Postgres
+# exists and pass them in, rather than have this script guess a URI shape.
+set -euo pipefail
+
+VAULT=""
+FORCE=0
+DRY_RUN=0
+
+# Internal secrets generated locally if missing.
+GENERATE="postgres-admin-password governor-api-key paperclip-admin-password \
+paperclip-agent-jwt-secret paperclip-auth-secret paperclip-automation-jwt-secret \
+paperclip-automation-token"
+
+# Secrets sourced from the environment.
+EXTERNAL="ai-foundry-api-key brave-search-api-key cf-tunnel-token claude-api-key \
+claude-base-url discord-bot-token gpt4o-api-key grok-api-key grok-base-url \
+kimi-api-key kimi-base-url openai-api-key phi-api-key phi-base-url \
+telegram-bot-token postgres-connection-string paperclip-db-url"
+
+die() { echo "error: $*" >&2; exit 2; }
+
+usage() {
+  cat <<'EOF'
+Usage: scripts/seed-keyvault.sh --vault NAME [options]
+
+  -v, --vault NAME   Key Vault name (the bare name, not the URL). Required.
+      --force        Overwrite secrets that already exist.
+  -n, --dry-run      Print what would happen; never call `az keyvault secret set`.
+  -l, --list         Print the secret inventory (generate vs external) and exit.
+  -h, --help         This help.
+
+External secrets are read from env vars (claude-api-key -> CLAUDE_API_KEY):
+  CLAUDE_API_KEY=... AI_FOUNDRY_API_KEY=... POSTGRES_CONNECTION_STRING=... \
+    scripts/seed-keyvault.sh -v aaf-dev-kv
+
+Run once BEFORE `terraform apply` (so postgres-admin-password exists), then
+again AFTER with the connection strings filled in from `terraform output`.
+EOF
+}
+
+env_name() { echo "$1" | tr 'a-z-' 'A-Z_'; }
+
+gen_value() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 32
+  else
+    # Fallback: still random, no openssl dependency.
+    head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'
+  fi
+}
+
+secret_exists() {
+  az keyvault secret show --vault-name "$VAULT" --name "$1" >/dev/null 2>&1
+}
+
+set_secret() {
+  # set_secret NAME VALUE
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "    would set: $1"
+    return 0
+  fi
+  az keyvault secret set --vault-name "$VAULT" --name "$1" --value "$2" \
+    --output none && echo "    set: $1"
+}
+
+print_inventory() {
+  echo "generate (random if absent):"
+  for s in $GENERATE; do echo "  - $s"; done
+  echo "external (from env, e.g. $(env_name claude-api-key)):"
+  for s in $EXTERNAL; do echo "  - $s  <- $(env_name "$s")"; done
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -v|--vault) VAULT="${2:-}"; shift 2 ;;
+    --force) FORCE=1; shift ;;
+    -n|--dry-run) DRY_RUN=1; shift ;;
+    -l|--list) print_inventory; exit 0 ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "unknown argument: $1 (try --help)" ;;
+  esac
+done
+
+[ -n "$VAULT" ] || [ "$DRY_RUN" -eq 1 ] || die "--vault is required (or use --dry-run)"
+[ -n "$VAULT" ] || VAULT="<vault>"
+
+echo "vault=$VAULT force=$FORCE dry_run=$DRY_RUN"
+echo
+
+generated=0 ; provided=0 ; kept=0 ; missing=""
+
+echo "generate:"
+for s in $GENERATE; do
+  if [ "$FORCE" -eq 0 ] && [ "$DRY_RUN" -eq 0 ] && secret_exists "$s"; then
+    echo "    keep: $s (exists)"; kept=$((kept + 1)); continue
+  fi
+  set_secret "$s" "$(gen_value)"; generated=$((generated + 1))
+done
+
+echo
+echo "external:"
+for s in $EXTERNAL; do
+  ev="$(env_name "$s")"
+  val="$(printenv "$ev" || true)"
+  if [ -z "$val" ]; then
+    echo "    skip: $s (env $ev unset)"; missing="$missing $s"; continue
+  fi
+  if [ "$FORCE" -eq 0 ] && [ "$DRY_RUN" -eq 0 ] && secret_exists "$s"; then
+    echo "    keep: $s (exists)"; kept=$((kept + 1)); continue
+  fi
+  set_secret "$s" "$val"; provided=$((provided + 1))
+done
+
+echo
+echo "summary: generated=$generated provided=$provided kept=$kept"
+[ -z "$missing" ] || echo "unset external secrets (fine unless you use them):$missing"
