@@ -33,23 +33,33 @@ Forge Console and as a **reference CI/CD deploy pipeline**
 traces a destructive request being refused at every layer, backed by **14 golden
 orchestration replay fixtures** ([`tests/replay/`](tests/replay/)).
 
-**Design references.** The [governed-memory architecture](docs/design/memory-system.md)
-— four planes, six classes, computed trust, contradiction detection, and a
-self-improvement loop — is documented to build toward; the governor service code
-is not bundled here.
+**Governed memory, shipped (flag-gated off).** The four-plane, six-class
+[memory model](docs/design/memory-system.md), with admission control, computed
+trust, contradiction detection, hybrid pgvector retrieval, and a
+self-improvement loop, now ships as real code under
+[`services/memory-governor/`](services/memory-governor/) and
+[`services/watchdog/`](services/watchdog/), with ~150 offline tests in CI. Every
+flag seeds off, so it stays inert until you enable it. The explicitly-not-built
+long tail (reflection pass, inspector UI, in-channel controls, contradiction
+auto-resolve) stays design-only.
 
 ## v1.2 — next
 
-Closing the path from "infrastructure provisioned" to "fully running stack in one command":
+Closing the path from "infrastructure provisioned" to "fully running stack in one command".
 
-- Image build and push for PaperClip/Honcho/agent-runtime
-- Key Vault secret seeding
-- Full service deployment automation
-- Post-deploy smoke tests
-- One-command full local stack (`docker compose --profile full up`)
-- Full Microsoft Teams integration
-- Secret-expiry monitoring: the watchdog detector that lists Key Vault secret/cert expiry and files an issue before a lapsed credential takes down the agents that depend on it (code shipped flag-gated off; goes live with the first deploy)
-- First fully validated end-to-end Azure deploy from a clean subscription
+Shipped as the reference deploy pipeline (validated offline; see [deploy-pipeline.md](docs/deploy-pipeline.md)):
+
+- Service deployment automation: a `build → seed → plan → gate → apply → smoke` pipeline ([`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)) wrapping the destroy-aware approval gate.
+- Image build and push via `az acr build`, no local Docker needed ([`scripts/build-and-push.sh`](scripts/build-and-push.sh)). The self-contained images (model-router, memory-governor, watchdog) build from this repo; the upstream-dependent three (paperclip, honcho, agent-runtime) build once their `apps/` sources are vendored, and the script skips them with a logged reason until then.
+- Key Vault secret seeding, idempotent: internal secrets generated, external ones read from the environment ([`scripts/seed-keyvault.sh`](scripts/seed-keyvault.sh)).
+- Post-deploy smoke tests with offline unit-tested verdict logic ([`scripts/smoke-test.sh`](scripts/smoke-test.sh) feeding `installer.smoke`).
+
+Still ahead:
+
+- Vendor the upstream PaperClip/Honcho/Hermes sources so the full image set builds, then the one-command full local stack (`docker compose --profile full up`).
+- Full Microsoft Teams integration.
+- Secret-expiry monitoring goes live: the watchdog detector that lists Key Vault secret/cert expiry and files an issue before a lapsed credential takes down the agents that depend on it (code shipped flag-gated off; activates with the first deploy).
+- First fully validated end-to-end Azure deploy from a clean subscription.
 
 ## Later
 
