@@ -58,7 +58,7 @@ Still ahead:
 
 - Vendor the upstream PaperClip/Honcho/Hermes sources so the full image set builds, then the one-command full local stack (`docker compose --profile full up`).
 - Full Microsoft Teams integration.
-- Secret-expiry monitoring goes live: the watchdog detector that lists Key Vault secret/cert expiry and files an issue before a lapsed credential takes down the agents that depend on it (code shipped flag-gated off; activates with the first deploy).
+- Secret-expiry monitoring goes live: the watchdog detector that lists Key Vault secret/cert expiry and files an issue before a lapsed credential takes down the agents that depend on it. Detector + watchdog wiring shipped and **now unit-tested** (8 boundary tests in `services/watchdog/tests/test_secret_expiry.py`); opt-in via `WATCHDOG_KEY_VAULT_URI`, activates with the first deploy.
 - First fully validated end-to-end Azure deploy from a clean subscription.
 
 ## Later
