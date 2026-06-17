@@ -29,8 +29,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # All buildable services, in build order. cloudflared is intentionally absent.
-ALL_SERVICES="model-router memory-governor watchdog agent-runtime honcho paperclip"
-SELF_CONTAINED="model-router memory-governor watchdog"
+ALL_SERVICES="model-router memory-governor watchdog teams-bridge agent-runtime honcho paperclip"
+SELF_CONTAINED="model-router memory-governor watchdog teams-bridge"
 
 # Default build-arg for the paperclip upstream pin (matches the Dockerfile ARG).
 PAPERCLIP_VERSION="${PAPERCLIP_VERSION:-v2026.517.0}"
@@ -75,6 +75,7 @@ svc_meta() {
     model-router)    echo "router|services/model-router|services/model-router/Dockerfile|self|" ;;
     memory-governor) echo "memory-governor|services/memory-governor|services/memory-governor/Dockerfile|self|" ;;
     watchdog)        echo "watchdog|services/watchdog|services/watchdog/Dockerfile|self|" ;;
+    teams-bridge)    echo "teams-bridge|services/teams-bridge|services/teams-bridge/Dockerfile|self|" ;;
     agent-runtime)   echo "hermes|.|services/agent-runtime/Dockerfile|upstream|apps/hermes/src" ;;
     honcho)          echo "honcho|.|services/honcho/Dockerfile|upstream|apps/honcho/src" ;;
     paperclip)       echo "paperclip|.|services/paperclip/Dockerfile|upstream|apps/paperclip" ;;
