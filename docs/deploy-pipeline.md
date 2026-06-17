@@ -84,10 +84,21 @@ OIDC means these are non-secret identifiers, not credentials:
 | `TFSTATE_RESOURCE_GROUP` | resource group holding the TF state storage account |
 | `TFSTATE_STORAGE_ACCOUNT` | storage account name for remote state |
 | `TFSTATE_CONTAINER` | blob container for state (e.g. `tfstate`) |
+| `CONTAINER_REGISTRY_NAME` | optional. ACR name for the `build` job. Unset means an infra-only deploy with no image build. |
+| `KEY_VAULT_NAME` | optional. Key Vault name for the `seed` job. Unset means seeding is skipped. |
+| `SMOKE_URL` | optional. A URL the `smoke` job probes for a 2xx/3xx response. |
 
 Create the state storage account once (any standard pattern works); the
 pipeline passes these via `terraform init -backend-config=` so no real values
 live in `backend.tf`.
+
+External secrets the `seed` job reads come from repository **secrets** (not
+variables), each named for the Key Vault secret upper-cased with underscores:
+`CLAUDE_API_KEY`, `AI_FOUNDRY_API_KEY`, `OPENAI_API_KEY`, `BRAVE_SEARCH_API_KEY`,
+`TELEGRAM_BOT_TOKEN`, `DISCORD_BOT_TOKEN`, `CF_TUNNEL_TOKEN`,
+`POSTGRES_CONNECTION_STRING`, `PAPERCLIP_DB_URL`. Set only the ones your
+deployment uses; the rest are skipped. `scripts/seed-keyvault.sh --list` prints
+the full inventory.
 
 ### 3. The approval gate - a GitHub **Environment**
 
@@ -107,12 +118,61 @@ profile (`cost-optimized` / `hardened`), and region. Then:
   pauses; you'll see the resources to be deleted in the job summary) → on
   approval, `apply` → `smoke`. Reject, and `apply` is skipped.
 
+## Build, seed, and smoke
+
+Three jobs wrap the plan/apply core so a run goes from source to a checked
+deployment.
+
+**`build`** runs `scripts/build-and-push.sh`, which uses `az acr build` (the
+image is built server-side inside ACR, so the runner needs no Docker daemon).
+The resolved tag (short git SHA by default, or the `image_tag` input) feeds the
+plan as `-var=<service>_image_tag`. Two classes of image exist:
+
+- self-contained (`model-router`, `memory-governor`, `watchdog`) build from this
+  repo alone.
+- upstream-dependent (`paperclip`, `honcho`, `agent-runtime`) need their
+  `apps/<project>/` sources vendored first (see
+  [local development](local-development.md)). The job runs with
+  `--skip-unbuildable`, so until you vendor those sources it builds what it can
+  and skips the rest with a logged reason. `scripts/build-and-push.sh --list`
+  shows the table.
+
+**`seed`** runs `scripts/seed-keyvault.sh`, which idempotently ensures every
+secret the Container Apps mount exists: internal secrets (JWT signing keys,
+admin passwords, `postgres-admin-password`) are generated if absent; external
+ones (provider keys, bot tokens, connection strings) come from the repository
+secrets listed above. Existing secrets are left untouched unless `--force`.
+
+**`smoke`** runs `scripts/smoke-test.sh`, which calls `az containerapp show` for
+the deployed apps (and any `SMOKE_URL`) and pipes the result to
+`installer.smoke`. An app that is not `provisioningState=Succeeded`, or a probe
+that is not 2xx/3xx, exits non-zero and fails the run. The verdict logic is
+unit-tested offline in `installer/tests/test_smoke.py`.
+
+### First deploy: a one-time Key Vault bootstrap
+
+The Key Vault module reads `postgres-admin-password` from the vault as a data
+source (`infrastructure/modules/keyvault/main.tf`), so that secret must exist
+before the first `plan` can resolve. The `seed` job covers steady state but
+cannot seed a vault that does not exist yet. For the first deploy, create the
+vault and seed the password once:
+
+```bash
+# 1. create just the resource group + vault
+terraform -chdir=infrastructure/environments/dev apply \
+  -target=azurerm_resource_group.main -target=module.keyvault
+
+# 2. seed the bootstrap secret (and any others you have ready)
+POSTGRES_CONNECTION_STRING=... scripts/seed-keyvault.sh -v <your-vault-name>
+
+# 3. now run the full pipeline (or terraform apply) as normal
+```
+
+After that, every run's `seed` job keeps the vault current and the bootstrap is
+not needed again.
+
 ## Notes & limits
 
-- This deploys the Azure infrastructure (Terraform). Building and pushing the
-  service container images to your registry is a separate step; point the
-  `*_image_tag` variables at images you've pushed, or extend this workflow with
-  an image-build job ahead of `plan`.
 - `terraform plan` reads remote state and talks to Azure, so the federated SP
   needs read access to the state storage account as well as the subscription.
 - The saved-plan artifact is retained for 5 days; an apply must consume a plan

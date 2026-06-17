@@ -58,8 +58,8 @@ COPY apps/hermes/overrides/skills skills/
 RUN mkdir -p /home/appuser/.hermes /home/appuser/.honcho && \
     chown -R appuser:appgroup /home/appuser
 
-# Entry point
-COPY --chown=appuser:appgroup apps/hermes/entrypoint.sh /entrypoint.sh
+# Entry point (repo-owned, lives beside this Dockerfile; build context is repo root)
+COPY --chown=appuser:appgroup services/agent-runtime/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # ── Google Workspace CLI (gws) ───────────────────────────────────────────────
