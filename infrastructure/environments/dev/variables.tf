@@ -101,6 +101,18 @@ variable "discord_enabled" {
   default     = false
 }
 
+variable "teams_enabled" {
+  description = "Enable the Microsoft Teams chat surface (teams-bridge)."
+  type        = bool
+  default     = false
+}
+
+variable "teams_orchestrator_agent_id" {
+  description = "Optional agent id to route inbound Teams messages to. Empty → PaperClip default routing."
+  type        = string
+  default     = ""
+}
+
 # Azure AI Foundry Configuration
 variable "ai_foundry_endpoint" {
   description = "Azure AI Foundry OpenAI-compatible endpoint URL"
