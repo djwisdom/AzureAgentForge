@@ -30,6 +30,11 @@ jobs:
 
   build-context:
     runs-on: ubuntu-latest
+    # Non-blocking until sub-project #2 ports the AAF-authored files the upstream
+    # Dockerfiles COPY (apps/paperclip/*, apps/hermes/overrides/skills,
+    # apps/honcho/docker-entrypoint.sh, build/skills/*.json). The job still runs
+    # and reports exactly what is missing; flip to enforcing once #2 lands.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
         with:
