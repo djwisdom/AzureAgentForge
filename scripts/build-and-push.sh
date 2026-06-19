@@ -32,8 +32,12 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ALL_SERVICES="model-router memory-governor watchdog teams-bridge agent-runtime honcho paperclip"
 SELF_CONTAINED="model-router memory-governor watchdog teams-bridge"
 
-# Default build-arg for the paperclip upstream pin (matches the Dockerfile ARG).
+# Default build-args for the paperclip upstream pin (match the Dockerfile ARGs).
+# EXPECTED_SHA guards against git-tag drift: the build fails if the cloned tag
+# resolves to a different commit. Resolve with:
+#   git ls-remote https://github.com/paperclipai/paperclip refs/tags/<tag>
 PAPERCLIP_VERSION="${PAPERCLIP_VERSION:-v2026.517.0}"
+PAPERCLIP_EXPECTED_SHA="${PAPERCLIP_EXPECTED_SHA:-3e6610fb938d04638fa578a1fc0d119b434fa2e4}"
 
 REGISTRY=""
 TAG=""
@@ -76,9 +80,9 @@ svc_meta() {
     memory-governor) echo "memory-governor|services/memory-governor|services/memory-governor/Dockerfile|self|" ;;
     watchdog)        echo "watchdog|services/watchdog|services/watchdog/Dockerfile|self|" ;;
     teams-bridge)    echo "teams-bridge|services/teams-bridge|services/teams-bridge/Dockerfile|self|" ;;
-    agent-runtime)   echo "hermes|.|services/agent-runtime/Dockerfile|upstream|apps/hermes/src" ;;
-    honcho)          echo "honcho|.|services/honcho/Dockerfile|upstream|apps/honcho/src" ;;
-    paperclip)       echo "paperclip|.|services/paperclip/Dockerfile|upstream|apps/paperclip" ;;
+    agent-runtime)   echo "hermes|.|services/agent-runtime/Dockerfile|upstream|apps/hermes/src apps/hermes/overrides/skills" ;;
+    honcho)          echo "honcho|.|services/honcho/Dockerfile|upstream|apps/honcho/src apps/honcho/docker-entrypoint.sh" ;;
+    paperclip)       echo "paperclip|.|services/paperclip/Dockerfile|upstream|apps/paperclip apps/hermes/src build/skills/skills-manifest.json build/skills/agent-skill-mapping.json" ;;
     *) return 1 ;;
   esac
 }
@@ -100,6 +104,31 @@ resolve_tag() {
   else
     echo "latest"
   fi
+}
+
+# Auto-init the upstream submodules (apps/*/src) when their content is missing —
+# removes the most common footgun: a non-recursive `git clone`. Detect → warn →
+# attempt `git submodule update --init --recursive` → continue on success → fail
+# with manual instructions only if auto-init fails (e.g. no network, tarball).
+ensure_submodules() {
+  git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  [ -f "$REPO_ROOT/.gitmodules" ] || return 0
+  local need=0 p
+  for p in apps/hermes/src apps/honcho/src; do
+    if [ ! -e "$REPO_ROOT/$p/.git" ] && [ -z "$(ls -A "$REPO_ROOT/$p" 2>/dev/null)" ]; then
+      need=1
+    fi
+  done
+  [ "$need" -eq 1 ] || return 0
+  echo "warning: submodule content missing under apps/*/src — attempting auto-init…" >&2
+  if git -C "$REPO_ROOT" submodule update --init --recursive; then
+    echo "submodules initialized." >&2
+    return 0
+  fi
+  echo "error: 'git submodule update --init --recursive' failed." >&2
+  echo "       Re-clone with:   git clone --recursive <url>" >&2
+  echo "       Or run manually: git submodule update --init --recursive" >&2
+  return 1
 }
 
 while [ $# -gt 0 ]; do
@@ -135,6 +164,16 @@ echo "registry=$REGISTRY tag=$TAG dry_run=$DRY_RUN"
 echo "requested: $REQUESTED"
 echo
 
+# Auto-init submodules only when we actually intend to build an upstream image
+# (skip for --self-contained, --dry-run, and --skip-unbuildable runs).
+needs_upstream=0
+for s in $REQUESTED; do
+  case "$s" in agent-runtime|honcho|paperclip) needs_upstream=1 ;; esac
+done
+if [ "$needs_upstream" -eq 1 ] && [ "$DRY_RUN" -eq 0 ] && [ "$SKIP_UNBUILDABLE" -eq 0 ]; then
+  ensure_submodules || die "submodule auto-init failed (see message above)"
+fi
+
 built="" ; skipped="" ; failed=""
 
 for s in $REQUESTED; do
@@ -145,20 +184,26 @@ EOF
   # Assemble the az acr build command first so the preflight can show it.
   set -- az acr build --registry "$REGISTRY" --image "$image:$TAG" --file "$dockerfile"
   [ "$PUSH_LATEST" -eq 1 ] && set -- "$@" --image "$image:latest"
-  [ "$s" = "paperclip" ] && set -- "$@" --build-arg "PAPERCLIP_VERSION=$PAPERCLIP_VERSION"
+  [ "$s" = "paperclip" ] && set -- "$@" --build-arg "PAPERCLIP_VERSION=$PAPERCLIP_VERSION" \
+                                        --build-arg "PAPERCLIP_EXPECTED_SHA=$PAPERCLIP_EXPECTED_SHA"
   set -- "$@" "$context"
 
-  # Preflight upstream-dependent inputs — each service lands in exactly one bucket.
-  if [ "$class" = "upstream" ] && [ -n "$required" ] && [ ! -e "$REPO_ROOT/$required" ]; then
-    if [ "$DRY_RUN" -eq 1 ]; then
-      echo "SKIP  $s: '$required' not vendored (would run): $*"
-      skipped="$skipped $s"; continue
-    elif [ "$SKIP_UNBUILDABLE" -eq 1 ]; then
-      echo "SKIP  $s: '$required' not vendored — see docs/local-development.md"
-      skipped="$skipped $s"; continue
-    else
-      echo "FAIL  $s: '$required' not vendored — vendor it or pass --skip-unbuildable" >&2
-      failed="$failed $s"; continue
+  # Preflight upstream-dependent inputs. Each upstream service may require SEVERAL
+  # inputs (submodule src, AAF overrides, generated manifests) — check them all.
+  if [ "$class" = "upstream" ] && [ -n "$required" ]; then
+    missing=""
+    for r in $required; do [ -e "$REPO_ROOT/$r" ] || missing="$missing $r"; done
+    if [ -n "$missing" ]; then
+      if [ "$DRY_RUN" -eq 1 ]; then
+        echo "SKIP  $s: missing inputs:$missing (would run): $*"
+        skipped="$skipped $s"; continue
+      elif [ "$SKIP_UNBUILDABLE" -eq 1 ]; then
+        echo "SKIP  $s: missing inputs:$missing — see docs/local-development.md"
+        skipped="$skipped $s"; continue
+      else
+        echo "FAIL  $s: missing inputs:$missing — vendor them or pass --skip-unbuildable" >&2
+        failed="$failed $s"; continue
+      fi
     fi
   fi
 
