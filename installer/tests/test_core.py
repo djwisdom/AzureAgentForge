@@ -64,7 +64,7 @@ def test_render_tfvars_optional_fields_and_quoting():
 
 def test_keyvault_admin_object_ids_valid_guid_passes():
     cfg = core.DeployConfig(**GOOD,
-                            keyvault_admin_object_ids=["d4c41ac3-986d-4f52-95f4-22ca268cd058"])
+                            keyvault_admin_object_ids=["11111111-2222-3333-4444-555555555555"])
     assert cfg.validate() == []
 
 
@@ -76,11 +76,11 @@ def test_keyvault_admin_object_ids_invalid_rejected():
 
 def test_render_tfvars_keyvault_admin_object_ids_as_hcl_list():
     cfg = core.DeployConfig(**GOOD, keyvault_admin_object_ids=[
-        "d4c41ac3-986d-4f52-95f4-22ca268cd058",
+        "11111111-2222-3333-4444-555555555555",
         "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"])
     kv = _kv(core.render_tfvars(cfg))
     assert kv["keyvault_admin_object_ids"] == (
-        '["d4c41ac3-986d-4f52-95f4-22ca268cd058", '
+        '["11111111-2222-3333-4444-555555555555", '
         '"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"]')
 
 
