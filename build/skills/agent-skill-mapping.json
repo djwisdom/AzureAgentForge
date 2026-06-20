@@ -1,0 +1,201 @@
+﻿{
+    "ender":  {
+                  "skillViews":  [
+                                     "skill_view(\"one-three-one-rule\")",
+                                     "skill_view(\"parallel-cli\")"
+                                 ],
+                  "displayName":  "Ender (Strategic Commander)",
+                  "skills":  [
+                                 "one-three-one-rule",
+                                 "parallel-cli"
+                             ]
+              },
+    "alfred":  {
+                   "skillViews":  [
+                                      "skill_view(\"agentmail\")",
+                                      "skill_view(\"duckduckgo-search\")",
+                                      "skill_view(\"email-to-obsidian\")",
+                                      "skill_view(\"google-workspace\")",
+                                      "skill_view(\"gws-cli\")",
+                                      "skill_view(\"last30days\")",
+                                      "skill_view(\"one-three-one-rule\")",
+                                      "skill_view(\"telephony\")"
+                                  ],
+                   "displayName":  "Alfred (Orchestrator)",
+                   "skills":  [
+                                  "agentmail",
+                                  "duckduckgo-search",
+                                  "email-to-obsidian",
+                                  "google-workspace",
+                                  "gws-cli",
+                                  "last30days",
+                                  "one-three-one-rule",
+                                  "telephony"
+                              ]
+               },
+    "archivist":  {
+                      "skillViews":  [
+                                         "skill_view(\"duckduckgo-search\")",
+                                         "skill_view(\"email-to-obsidian\")",
+                                         "skill_view(\"last30days\")",
+                                         "skill_view(\"memento-flashcards\")",
+                                         "skill_view(\"qmd\")",
+                                         "skill_view(\"scrapling\")"
+                                     ],
+                      "displayName":  "Archivist (Librarian/RAG)",
+                      "skills":  [
+                                     "duckduckgo-search",
+                                     "email-to-obsidian",
+                                     "last30days",
+                                     "memento-flashcards",
+                                     "qmd",
+                                     "scrapling"
+                                 ]
+                  },
+    "radar":  {
+                  "skillViews":  [
+                                     "skill_view(\"domain-intel\")",
+                                     "skill_view(\"duckduckgo-search\")",
+                                     "skill_view(\"last30days\")",
+                                     "skill_view(\"parallel-cli\")",
+                                     "skill_view(\"scrapling\")"
+                                 ],
+                  "displayName":  "Radar (Cost Guardian)",
+                  "skills":  [
+                                 "domain-intel",
+                                 "duckduckgo-search",
+                                 "last30days",
+                                 "parallel-cli",
+                                 "scrapling"
+                             ]
+              },
+    "bean":  {
+                 "skillViews":  [
+                                    "skill_view(\"docker-management\")",
+                                    "skill_view(\"parallel-cli\")"
+                                ],
+                 "displayName":  "Bean (Planner)",
+                 "skills":  [
+                                "docker-management",
+                                "parallel-cli"
+                            ]
+             },
+    "landry":  {
+                   "skillViews":  [
+                                      "skill_view(\"chroma\")",
+                                      "skill_view(\"instructor\")",
+                                      "skill_view(\"qdrant\")"
+                                  ],
+                   "displayName":  "Landry (Career Coach)",
+                   "skills":  [
+                                  "chroma",
+                                  "instructor",
+                                  "qdrant"
+                              ]
+               },
+    "valentine":  {
+                      "skillViews":  [
+                                         "skill_view(\"duckduckgo-search\")",
+                                         "skill_view(\"one-three-one-rule\")",
+                                         "skill_view(\"scrapling\")"
+                                     ],
+                      "displayName":  "Valentine (Psychology)",
+                      "skills":  [
+                                     "duckduckgo-search",
+                                     "one-three-one-rule",
+                                     "scrapling"
+                                 ]
+                  },
+    "forge":  {
+                  "skillViews":  [
+                                     "skill_view(\"cli\")",
+                                     "skill_view(\"docker-management\")",
+                                     "skill_view(\"fastmcp\")"
+                                 ],
+                  "displayName":  "Forge (Application Coder)",
+                  "skills":  [
+                                 "cli",
+                                 "docker-management",
+                                 "fastmcp"
+                             ]
+              },
+    "atlas":  {
+                  "skillViews":  [
+                                     "skill_view(\"1password\")",
+                                     "skill_view(\"docker-management\")",
+                                     "skill_view(\"domain-intel\")"
+                                 ],
+                  "displayName":  "Atlas (Infrastructure)",
+                  "skills":  [
+                                 "1password",
+                                 "docker-management",
+                                 "domain-intel"
+                             ]
+              },
+    "tyrion":  {
+                   "skillViews":  [
+                                      "skill_view(\"agentmail\")",
+                                      "skill_view(\"one-three-one-rule\")",
+                                      "skill_view(\"telephony\")"
+                                  ],
+                   "displayName":  "Tyrion (Business Strategy)",
+                   "skills":  [
+                                  "agentmail",
+                                  "one-three-one-rule",
+                                  "telephony"
+                              ]
+               },
+    "sauron":  {
+                   "skillViews":  [
+                                      "skill_view(\"docker-management\")",
+                                      "skill_view(\"domain-intel\")",
+                                      "skill_view(\"parallel-cli\")",
+                                      "skill_view(\"sherlock\")"
+                                  ],
+                   "displayName":  "Sauron (Security)",
+                   "skills":  [
+                                  "docker-management",
+                                  "domain-intel",
+                                  "parallel-cli",
+                                  "sherlock"
+                              ]
+               },
+    "apollo":  {
+                   "skillViews":  [
+                                      "skill_view(\"accelerate\")",
+                                      "skill_view(\"flash-attention\")",
+                                      "skill_view(\"huggingface-tokenizers\")",
+                                      "skill_view(\"pytorch-lightning\")",
+                                      "skill_view(\"tensorrt-llm\")",
+                                      "skill_view(\"torchtitan\")"
+                                  ],
+                   "displayName":  "Apollo (QA)",
+                   "skills":  [
+                                  "accelerate",
+                                  "flash-attention",
+                                  "huggingface-tokenizers",
+                                  "pytorch-lightning",
+                                  "tensorrt-llm",
+                                  "torchtitan"
+                              ]
+               },
+    "gandalf":  {
+                    "skillViews":  [
+                                       "skill_view(\"1password\")",
+                                       "skill_view(\"domain-intel\")",
+                                       "skill_view(\"duckduckgo-search\")",
+                                       "skill_view(\"last30days\")",
+                                       "skill_view(\"oss-forensics\")",
+                                       "skill_view(\"sherlock\")"
+                                   ],
+                    "displayName":  "Gandalf (Research)",
+                    "skills":  [
+                                   "1password",
+                                   "domain-intel",
+                                   "duckduckgo-search",
+                                   "last30days",
+                                   "oss-forensics",
+                                   "sherlock"
+                               ]
+                }
+}
