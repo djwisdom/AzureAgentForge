@@ -12,6 +12,10 @@
 # Data: /paperclip (mount an Azure File Share here for persistence)
 
 ARG PAPERCLIP_VERSION=v2026.517.0
+# Guard against git-tag drift: the build fails if the cloned tag resolves to a
+# commit other than this. Resolve with:
+#   git ls-remote https://github.com/paperclipai/paperclip refs/tags/<tag>
+ARG PAPERCLIP_EXPECTED_SHA=3e6610fb938d04638fa578a1fc0d119b434fa2e4
 ARG NODE_VERSION=lts-trixie-slim
 
 # ── Stage 0: upstream-style base image ────────────────────────────────────────
@@ -43,15 +47,22 @@ RUN usermod -u ${USER_UID} --non-unique node \
 FROM base AS deps
 
 ARG PAPERCLIP_VERSION
+ARG PAPERCLIP_EXPECTED_SHA
 
 WORKDIR /app
 
-# Clone the pinned release tag.
+# Clone the pinned release tag, then verify the resolved commit matches the
+# expected SHA. A git tag is not immutable; this fails the build on tag drift.
 # CACHE_BUST invalidates Docker layer cache so a version change actually takes effect.
 ARG CACHE_BUST=2026-05-23
 RUN echo "cache-bust=${CACHE_BUST}" \
  && git clone --depth=1 --branch ${PAPERCLIP_VERSION} \
-    https://github.com/paperclipai/paperclip.git .
+    https://github.com/paperclipai/paperclip.git . \
+ && ACTUAL_SHA="$(git rev-parse HEAD)" \
+ && { [ -z "${PAPERCLIP_EXPECTED_SHA}" ] || [ "${ACTUAL_SHA}" = "${PAPERCLIP_EXPECTED_SHA}" ] || \
+      { echo "ERROR: paperclip ${PAPERCLIP_VERSION} resolved to ${ACTUAL_SHA}," \
+             "expected ${PAPERCLIP_EXPECTED_SHA} (tag drift — verify upstream and update the pin)" >&2; \
+        exit 1; }; }
 
 # Install hermes-paperclip-adapter into the server workspace before
 # dependency resolution so pnpm can hoist it correctly
@@ -172,6 +183,9 @@ RUN grep -q '"--save", "--ignore-scripts"' \
 # and replaces the fragile prompt template with one that enforces real task
 # completion (no generic "success" comments, no marking done without output).
 COPY apps/paperclip/patch-adapter.mjs /tmp/patch-adapter.mjs
+# patch-adapter.mjs imports ./patch-adapter-router-env.mjs (§0.7 cost-envelope),
+# so the sibling must be present in the same dir for the node run to resolve it.
+COPY apps/paperclip/patch-adapter-router-env.mjs /tmp/patch-adapter-router-env.mjs
 RUN node /tmp/patch-adapter.mjs
 
 # tsx is a devDependency but the upstream CMD uses it as a runtime loader

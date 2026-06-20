@@ -13,10 +13,38 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: gitleaks
+        with:
+          # Do NOT init submodules: the AAF secret scan covers AAF-authored code
+          # and history only. Vendored upstreams (apps/*/src) carry their own
+          # test fixtures/example tokens and are governed by their own upstreams
+          # (the internal-ref scanner excludes them for the same reason).
+          submodules: false
+          fetch-depth: 0 # full history so the history scan below is meaningful
+      - name: gitleaks (working tree + history)
         run: |
           curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar -xz gitleaks
           ./gitleaks dir . --config .gitleaks.toml --redact --exit-code 1
+          ./gitleaks git . --config .gitleaks.toml --redact --exit-code 1
+      - name: trufflehog (filesystem, verified only)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
+          trufflehog filesystem . --exclude-paths .trufflehog-exclude --fail --only-verified
+      - name: internal-reference scan
+        run: scripts/scan-internal-refs.sh
+
+  build-context:
+    runs-on: ubuntu-latest
+    # Non-blocking until sub-project #2 ports the AAF-authored files the upstream
+    # Dockerfiles COPY (apps/paperclip/*, apps/hermes/overrides/skills,
+    # apps/honcho/docker-entrypoint.sh, build/skills/*.json). The job still runs
+    # and reports exactly what is missing; flip to enforcing once #2 lands.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - name: validate upstream Dockerfile COPY sources resolve
+        run: scripts/validate-build-context.sh
 
   terraform:
     runs-on: ubuntu-latest
