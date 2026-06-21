@@ -38,10 +38,11 @@ Pick a path:
 | Docker Desktop | Path A; Docker Compose ships with it |
 | LLM endpoint | Azure AI Foundry (primary) or any OpenAI-compatible base URL |
 
-The stack defaults to Azure AI Foundry with grok-4-fast-reasoning as its
-primary model. If you do not have an AI Foundry project yet, set
-`LLM_PROVIDER=openai_compat` and point `OPENAI_COMPAT_BASE_URL` at any
-compatible endpoint (Ollama, vLLM, or a hosted API) instead.
+The local router registers a `gpt4o-mini` primary tier when you provide either
+the `AZURE_FOUNDRY_*` pair or the direct `GPT4O_*` pair (the former is aliased
+to the latter in `docker-compose.yml`) — point either at any OpenAI-compatible
+endpoint: Azure AI Foundry, Ollama, vLLM, or a hosted API. Optional tiers
+(Grok, Kimi, Claude, Phi) register only when their own env vars are set.
 
 ---
 
@@ -62,12 +63,11 @@ AZURE_FOUNDRY_ENDPOINT=https://<your-project>.openai.azure.com/
 AZURE_FOUNDRY_API_KEY=<your-key>
 ```
 
-Or, for any OpenAI-compatible endpoint:
+Or point the primary tier at any OpenAI-compatible endpoint:
 
 ```
-LLM_PROVIDER=openai_compat
-OPENAI_COMPAT_BASE_URL=http://localhost:11434/v1   # example: local Ollama
-OPENAI_COMPAT_API_KEY=ollama                        # placeholder if not required
+GPT4O_BASE_URL=http://localhost:11434/v1   # example: local Ollama/vLLM
+GPT4O_API_KEY=ollama                        # placeholder if not required
 ```
 
 The Postgres defaults (`POSTGRES_USER=aaf`, `POSTGRES_PASSWORD=localdev`,
@@ -96,7 +96,7 @@ tiers but still accepts requests on port 8080.
 PaperClip and Honcho sit behind the `full` Compose profile. Their Dockerfiles
 build from upstream sources (paperclipai/paperclip, plastic-labs/honcho) not
 included in this repo; you need to clone those first. The full local stack with
-PaperClip at localhost:3099 is a one-command experience in v1.1.
+PaperClip at localhost:3099 is a one-command experience (`scripts/local-stack.sh up`).
 See [ROADMAP.md](../ROADMAP.md).
 
 ### 3. Add agents and connect chat surfaces
@@ -214,8 +214,8 @@ fresh subscription.
 > exactly what runs. See [docs/security.md](security.md) for the rationale.
 
 This step provisions infrastructure. It does not build or push service images.
-Image builds, push, and service startup are v1.1, delivered by the CLI
-installer. See [ROADMAP.md](../ROADMAP.md).
+Image build, push, and service startup are automated in v1.2 via
+`scripts/build-and-push.sh` and the Forge Console. See [ROADMAP.md](../ROADMAP.md).
 
 ### 6. Seed Key Vault secrets
 
@@ -261,9 +261,37 @@ This stack runs in production on Azure; it is a proven platform, and this repo
 is its sanitized, reusable version. What's left to you is setup, not whether it
 works: a clean clone validates and plans without errors; `docker compose up`
 starts postgres and model-router (the full local stack needs `--profile full`
-and upstream sources, one-command in v1.1); and `terraform apply` provisions the
-infrastructure. Building and pushing the service images, IAM/auth between GitHub
-and Azure, and secret seeding are manual today and become a single command in
-the v1.1 CLI installer. The cloud prerequisites (your Azure subscription, an AI
+and upstream sources, brought up with one command via `scripts/local-stack.sh up`);
+and `terraform apply` provisions the infrastructure. Building and pushing the
+service images and seeding secrets are automated in v1.2 (`scripts/build-and-push.sh`,
+`scripts/seed-keyvault.sh`, and the Forge Console / reference deploy pipeline);
+wiring GitHub-to-Azure IAM (OIDC) is the one piece still yours to set up once. The cloud prerequisites (your Azure subscription, an AI
 Foundry project or substitute endpoint, and Terraform state storage) are yours to
 provide. Cost figures are estimates pending your own bill.
+
+## Deployment walkthrough (Forge Console)
+
+A full end-to-end deploy of the cloud stack from a **clean subscription** via the
+Forge Console (`PYTHON=python3.13 ./forge`). Image builds run server-side in ACR
+(`az acr build`), so no local Docker is required.
+
+1. **Build & push the images** — `scripts/build-and-push.sh` (server-side `az acr build`; run `--list` first to preview the seven images):
+   ![Image build to ACR](assets/deploy-1-acr-build.png)
+2. **Preflight checks** — Terraform, `az` login, and subscription detection:
+   ![Forge Console preflight](assets/deploy-2-preflight.png)
+3. **Configuration wizard** — the tfvars form with live preview:
+   ![tfvars wizard](assets/deploy-3-config-wizard.png)
+4. **Plan** — live-streamed `terraform plan`:
+   ![terraform plan](assets/deploy-4-plan.png)
+5. **Destroy-aware apply gate** — typed confirmation; routine changes apply, any delete/replace blocks:
+   ![apply gate](assets/deploy-5-apply-gate.png)
+6. **Apply complete** — infrastructure provisioned:
+   ![apply complete](assets/deploy-6-apply-complete.png)
+7. **Running stack** — the resource group with the Container Apps environment and the deployed apps:
+   ![resource group](assets/deploy-7-resource-group.png)
+8. **Post-deploy smoke + live UI** — `scripts/smoke-test.sh` PASS and the PaperClip UI over the Cloudflare tunnel:
+   ![smoke pass and PaperClip UI](assets/deploy-8-smoke-and-ui.png)
+
+> Key Vault is seeded with `scripts/seed-keyvault.sh` (the generate-class secrets,
+> incl. `postgres-admin-password`, must exist before the first `terraform apply`).
+> The same flow runs unattended via the [reference deploy pipeline](deploy-pipeline.md).
